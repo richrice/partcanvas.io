@@ -126,7 +126,7 @@ export function Workspace({ initialModel }: { initialModel?: InitialWorkspaceMod
 
   const effectiveExportFormat: ExportFormat = result?.dimension === 2
     ? (["svg", "dxf"].includes(exportFormat) ? exportFormat : "svg")
-    : (["stl", "obj", "3mf"].includes(exportFormat) ? exportFormat : "stl");
+    : (["stl", "obj", "3mf", "step"].includes(exportFormat) ? exportFormat : "stl");
 
   useEffect(() => {
     const timeout = window.setTimeout(compile, 320);
@@ -378,7 +378,7 @@ export function Workspace({ initialModel }: { initialModel?: InitialWorkspaceMod
           />
           <div className="print-summary">
             <div><span>{result?.dimension === 2 ? "AREA" : "EST. VOLUME"}</span><strong>{result?.dimension === 2 && result.metrics.area !== null ? `${format(result.metrics.area)} mm²` : result?.metrics.volume ? `${format(result.metrics.volume / 1000)} cm³` : "—"}</strong></div>
-            <div><span>FORMAT</span><select aria-label="Export format" className="format-select" value={effectiveExportFormat} onChange={(event) => setExportFormat(event.target.value as ExportFormat)}>{result?.dimension === 2 ? <><option value="svg">SVG</option><option value="dxf">AutoCAD DXF</option></> : <><option value="stl">Binary STL</option><option value="3mf">BambuStudio 3MF (colors)</option><option value="obj">Wavefront OBJ</option></>}</select></div>
+            <div><span>FORMAT</span><select aria-label="Export format" className="format-select" value={effectiveExportFormat} onChange={(event) => setExportFormat(event.target.value as ExportFormat)}>{result?.dimension === 2 ? <><option value="svg">SVG</option><option value="dxf">AutoCAD DXF</option></> : <><option value="stl">Binary STL</option><option value="step">STEP (faceted B-rep)</option><option value="3mf">BambuStudio 3MF (colors)</option><option value="obj">Wavefront OBJ</option></>}</select></div>
           </div>
           <button className="export-large" onClick={downloadModel} disabled={!result?.geometry || compiling}>
             <span><Download size={19} /> Download {effectiveExportFormat.toUpperCase()}</span>

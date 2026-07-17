@@ -16,6 +16,7 @@ describe("POST /api/render", () => {
     ["stl", "model/stl", [0, 0]],
     ["obj", "text/plain; charset=utf-8", [35, 32]],
     ["3mf", "model/3mf", [0x50, 0x4b]],
+    ["step", "model/step", [0x49, 0x53]],
   ] as const)("renders %s with CLI-like defines and transforms", async (format, mimeType, magic) => {
     const response = await POST(renderRequest({
       source: "size = 4; cube([size, dimensions[0], dimensions[1]]);",
@@ -34,7 +35,7 @@ describe("POST /api/render", () => {
   });
 
   it("rejects unsupported formats and models over a caller-specified triangle limit", async () => {
-    const unsupported = await POST(renderRequest({ source: "cube(1);", format: "step" }));
+    const unsupported = await POST(renderRequest({ source: "cube(1);", format: "ply" }));
     expect(unsupported.status).toBe(400);
 
     const limited = await POST(renderRequest({ source: "sphere(10, $fn=64);", options: { maxTriangles: 1000 } }));

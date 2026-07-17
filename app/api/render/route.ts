@@ -116,8 +116,8 @@ export async function POST(request: Request) {
     }
     if (body.source.length > 2_000_000) return json({ error: "source exceeds the 2 MB limit" }, 413);
     const format = body.format ?? "stl";
-    if (!(["stl", "obj", "3mf", "svg", "dxf"] as unknown[]).includes(format)) {
-      return json({ error: `Unsupported format '${String(format)}'. Supported: stl, obj, 3mf, svg, dxf` }, 400);
+    if (!(["stl", "obj", "3mf", "step", "svg", "dxf"] as unknown[]).includes(format)) {
+      return json({ error: `Unsupported format '${String(format)}'. Supported: stl, obj, 3mf, step, svg, dxf` }, 400);
     }
     const fn = typeof body.options?.fn === "number" ? Math.min(256, Math.max(3, Math.round(body.options.fn))) : undefined;
     const time = typeof body.options?.time === "number" && Number.isFinite(body.options.time)
@@ -179,7 +179,7 @@ export async function POST(request: Request) {
       return json({ error: `Model has ${result.metrics.triangles} triangles, exceeding the ${maxTriangles} triangle limit` }, 422);
     }
     const filename = typeof body.filename === "string" && body.filename.trim()
-      ? body.filename.replace(/[^a-zA-Z0-9._-]/g, "-").replace(/\.(?:stl|obj|3mf|svg|dxf)$/i, "")
+      ? body.filename.replace(/[^a-zA-Z0-9._-]/g, "-").replace(/\.(?:stl|obj|3mf|step|stp|svg|dxf)$/i, "")
       : "partcanvas-model";
     const serializeStart = performance.now();
     const serialized = serializeGeometry(format === "3mf" ? result.parts : result.geometry, format as ExportFormat, filename);
