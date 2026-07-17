@@ -12,7 +12,7 @@ export interface ModelParameter {
   label: string;
   description?: string;
   section: string;
-  type: "number" | "string" | "boolean" | "select" | "vector";
+  type: "number" | "string" | "boolean" | "select" | "vector" | "color";
   defaultValue: ParameterValue;
   min?: number;
   max?: number;
@@ -43,6 +43,14 @@ function titleCase(name: string) {
 
 export function extractParameters(source: string): ModelParameter[] {
   const parameters: ModelParameter[] = [];
+  const colorReferences = new Set<string>();
+  const sourceWithoutComments = source.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/.*$/gm, " ");
+  for (const match of sourceWithoutComments.matchAll(/\bcolor\s*\(\s*(?:c\s*=\s*)?([A-Za-z_$][\w$]*)\b/g)) {
+    colorReferences.add(match[1]);
+  }
+  for (const match of sourceWithoutComments.matchAll(/\bcolor\s*\([^)]*?\bc\s*=\s*([A-Za-z_$][\w$]*)\b/g)) {
+    colorReferences.add(match[1]);
+  }
   let section = "Parameters";
   let depth = 0;
   let pendingDescription = "";
@@ -113,6 +121,14 @@ export function extractParameters(source: string): ModelParameter[] {
               parameter.type = "select";
             }
           }
+          const colorByName = /(?:^|_)(?:color|colour)(?:_|$)/i.test(name);
+          const colorVector = Array.isArray(defaultValue)
+            && (defaultValue.length === 3 || defaultValue.length === 4)
+            && defaultValue.every((component) => component >= 0 && component <= 1);
+          if (!parameter.options && (colorByName || colorReferences.has(name)) && (typeof defaultValue === "string" || colorVector)) {
+            parameter.type = "color";
+            parameter.unit = undefined;
+          }
           parameters.push(parameter);
         }
         pendingDescription = "";
@@ -161,10 +177,13 @@ export function validateParameterOverrides(
     }
     const expected = definition.type === "select" ? typeof definition.defaultValue : definition.type;
     const actual = scalarType(value);
+    const validColor = expected === "color" && (typeof value === "string"
+      || (Array.isArray(value) && (value.length === 3 || value.length === 4)
+        && value.every((item) => typeof item === "number" && Number.isFinite(item) && item >= 0 && item <= 1)));
     const validVector = expected === "vector" && Array.isArray(value) && value.length === (definition.defaultValue as number[]).length
       && value.every((item) => typeof item === "number" && Number.isFinite(item));
     const validScalar = expected !== "vector" && actual === expected;
-    if (options.checkParameters && !(validVector || validScalar)) {
+    if (options.checkParameters && !(validColor || validVector || validScalar)) {
       diagnostics.push({ code: "type-mismatch", parameter: name, message: `Parameter '${name}' expects ${expected}, received ${actual}` });
       continue;
     }

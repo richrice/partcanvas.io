@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronDown, RotateCcw, SlidersHorizontal } from "lucide-react";
+import { colors } from "@jscad/modeling";
 import type { ModelParameter, ParameterValue } from "@/lib/scad/parameters";
 
 interface ParameterPanelProps {
@@ -11,6 +12,19 @@ interface ParameterPanelProps {
   onChange: (name: string, value: ParameterValue) => void;
   onPresetChange?: (key: string) => void;
   onReset: () => void;
+}
+
+function colorComponents(value: ParameterValue): [number, number, number] | undefined {
+  if (Array.isArray(value) && value.length >= 3) {
+    return [value[0], value[1], value[2]].map((component) => Math.min(1, Math.max(0, component))) as [number, number, number];
+  }
+  if (typeof value !== "string") return undefined;
+  if (/^#[\da-f]{6}$/i.test(value)) return colors.hexToRgb(value).slice(0, 3) as [number, number, number];
+  return colors.colorNameToRgb(value)?.slice(0, 3) as [number, number, number] | undefined;
+}
+
+function colorHex(value: ParameterValue, fallback: ParameterValue) {
+  return colors.rgbToHex(colorComponents(value) ?? colorComponents(fallback) ?? [0.18, 0.75, 0.66]).slice(0, 7);
 }
 
 export function ParameterPanel({ parameters, values, presets = [], selectedPreset = "", onChange, onPresetChange, onReset }: ParameterPanelProps) {
@@ -58,12 +72,14 @@ export function ParameterPanel({ parameters, values, presets = [], selectedPrese
           <div className="parameter-list">
             {items.map((parameter) => {
               const value = values[parameter.name] ?? parameter.defaultValue;
+              const selectedColor = parameter.type === "color" ? colorHex(value, parameter.defaultValue) : "";
               return (
                 <label className="parameter-control" key={parameter.name}>
                   <span className="parameter-label">
                     <span>{parameter.label}</span>
                     {parameter.type === "number" && <output>{Number(value).toFixed(Number(parameter.step) < 1 ? 1 : 0)}{parameter.unit ? ` ${parameter.unit}` : ""}</output>}
                     {parameter.type === "vector" && <output>[{(Array.isArray(value) ? value : parameter.defaultValue as number[]).join(", ")}]</output>}
+                    {parameter.type === "color" && <output>{selectedColor.toUpperCase()}</output>}
                   </span>
                   {parameter.description && <small>{parameter.description}</small>}
                   {parameter.type === "number" && parameter.min !== undefined && parameter.max !== undefined ? (
@@ -100,6 +116,21 @@ export function ParameterPanel({ parameters, values, presets = [], selectedPrese
                     }}>
                       {parameter.options?.map((option) => <option value={String(option.value)} key={String(option.value)}>{option.label}</option>)}
                     </select>
+                  ) : parameter.type === "color" ? (
+                    <div className="color-input-row">
+                      <input
+                        aria-label={`${parameter.label} color`}
+                        type="color"
+                        value={selectedColor}
+                        onChange={(event) => {
+                          const next = colors.hexToRgb(event.target.value).slice(0, 3);
+                          const currentAlpha = Array.isArray(value) && value.length === 4 ? value[3]
+                            : Array.isArray(parameter.defaultValue) && parameter.defaultValue.length === 4 ? parameter.defaultValue[3] : undefined;
+                          onChange(parameter.name, currentAlpha === undefined ? next : [...next, currentAlpha]);
+                        }}
+                      />
+                      <span>{selectedColor.toUpperCase()}</span>
+                    </div>
                   ) : parameter.type === "vector" ? (
                     <div className="vector-inputs">
                       {(Array.isArray(value) ? value : parameter.defaultValue as number[]).map((component, index, vector) => (

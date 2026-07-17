@@ -143,6 +143,13 @@ input[type="range"]::-webkit-slider-thumb { margin-top: -5px; width: 13px; heigh
 .number-input:focus, .text-input:focus, .parameter-control select:focus { border-color: #4e8f80; }
 .vector-inputs { display: grid; grid-template-columns: repeat(auto-fit, minmax(45px, 1fr)); gap: 5px; }
 .vector-inputs .number-input { width: 100%; }
+.color-input-row { height: 34px; padding: 4px 8px 4px 4px; display: flex; align-items: center; gap: 9px; border: 1px solid #363c36; border-radius: 5px; background: #131613; }
+.color-input-row:focus-within { border-color: #4e8f80; }
+.color-input-row input[type="color"] { width: 42px; height: 26px; padding: 0; border: 0; border-radius: 4px; background: transparent; cursor: pointer; overflow: hidden; }
+.color-input-row input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+.color-input-row input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 4px; }
+.color-input-row input[type="color"]::-moz-color-swatch { border: 0; border-radius: 4px; }
+.color-input-row span { color: #aeb6ad; font: 9.5px var(--font-mono); }
 .toggle { width: max-content; display: flex; align-items: center; gap: 7px; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 9px; cursor: pointer; }
 .toggle span { width: 28px; height: 15px; padding: 2px; border-radius: 9px; background: #343a34; }
 .toggle span::after { content: ""; display: block; width: 11px; height: 11px; border-radius: 50%; background: #8b938a; transition: 160ms ease; }

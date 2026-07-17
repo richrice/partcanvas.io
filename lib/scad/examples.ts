@@ -117,6 +117,10 @@ tag_height = 26;       // Tag height [18:1:45]
 thickness = 3;         // Base thickness [1.6:0.2:6]
 corner = 4;            // Corner radius [2:1:8]
 keyring_hole = true;   // Add a keyring hole
+
+/* [Colors] */
+tag_color = "navy";    // Base color
+text_color = "gold";   // Raised text color
 $fn = 40;
 
 module rounded_plate(width, height, depth, radius) {
@@ -127,14 +131,14 @@ module rounded_plate(width, height, depth, radius) {
   }
 }
 
-color("navy")
+color(tag_color)
   difference() {
     rounded_plate(tag_width, tag_height, thickness, corner);
     if (keyring_hole)
       translate([8, tag_height / 2, -1]) cylinder(h = thickness + 2, r = 3);
   }
 
-color("gold")
+color(text_color)
   translate([keyring_hole ? 15 : 6, tag_height / 2, thickness])
     linear_extrude(height = raised)
       text(label, size = font_size, valign = "center");`,

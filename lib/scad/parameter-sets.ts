@@ -105,6 +105,14 @@ function scalarPresetValue(parameter: ModelParameter, raw: unknown): ParameterSc
 }
 
 function presetValue(parameter: ModelParameter, raw: unknown): ParameterValue | undefined {
+  if (parameter.type === "color") {
+    if (typeof raw === "string") return raw;
+    if (!Array.isArray(raw) || (raw.length !== 3 && raw.length !== 4)) return undefined;
+    const values = raw.map(numberValue);
+    return values.every((value) => value !== undefined && value >= 0 && value <= 1)
+      ? values as number[]
+      : undefined;
+  }
   if (parameter.type !== "vector") return scalarPresetValue(parameter, raw);
   let values: unknown = raw;
   if (typeof raw === "string") {

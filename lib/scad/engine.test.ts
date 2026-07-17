@@ -74,6 +74,19 @@ internal_epsilon = 0.01;
     expect(count).toMatchObject({ min: 3, max: 14, step: 1 });
     expect(ratio.step).toBeCloseTo(0.01, 8);
   });
+
+  it("recognizes exposed string and RGB color parameters", () => {
+    const parameters = extractParameters(`
+body = "navy";
+accent_colour = [0.9, 0.2, 0.1];
+dimensions = [10, 20, 3];
+color(body) cube(dimensions);
+color(c = accent_colour) translate([12, 0, 0]) cube(2);
+`);
+    expect(parameters.find((parameter) => parameter.name === "body")?.type).toBe("color");
+    expect(parameters.find((parameter) => parameter.name === "accent_colour")?.type).toBe("color");
+    expect(parameters.find((parameter) => parameter.name === "dimensions")?.type).toBe("vector");
+  });
 });
 
 describe("CAD compiler", () => {
