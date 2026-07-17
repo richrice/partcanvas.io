@@ -1,0 +1,51 @@
+{
+  "name": "partcanvas-io",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@jscad/3mf-serializer": "^2.1.17",
+    "@jscad/dxf-deserializer": "^2.3.30",
+    "@jscad/dxf-serializer": "^2.1.23",
+    "@jscad/modeling": "^2.13.0",
+    "@jscad/obj-deserializer": "^2.0.33",
+    "@jscad/obj-serializer": "^2.1.23",
+    "@jscad/stl-deserializer": "^2.1.30",
+    "@jscad/stl-serializer": "^2.1.23",
+    "@jscad/svg-deserializer": "^2.5.14",
+    "@jscad/svg-serializer": "^2.3.21",
+    "earcut": "3.0.2",
+    "fast-png": "^7.0.1",
+    "fflate": "^0.8.3",
+    "lucide-react": "^0.544.0",
+    "next": "^16.2.10",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "straight-skeleton": "1.1.0",
+    "three": "^0.185.1"
+  },
+  "devDependencies": {
+    "@types/earcut": "3.0.0",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/three": "^0.185.0",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "^16.2.10",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.10"
+  },
+  "overrides": {
+    "postcss": "^8.5.19"
+  }
+}
