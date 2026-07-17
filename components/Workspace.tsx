@@ -251,7 +251,7 @@ export function Workspace({ initialModel }: { initialModel?: InitialWorkspaceMod
             )}
           </div>
           <a className="ghost-button docs-button api-link" href="/docs/api"><Code2 size={15} /> API</a>
-          <a className="icon-button github-link" href="https://github.com/openscad/openscad" target="_blank" rel="noreferrer" aria-label="OpenSCAD project"><Github size={17} /></a>
+          <a className="icon-button github-link" href="https://github.com/richrice/partcanvas.io" target="_blank" rel="noreferrer" aria-label="partcanvas.io source code on GitHub"><Github size={17} /></a>
           <button className="ghost-button share-button" onClick={shareModel}><Share2 size={15} /> Share</button>
           <button className="ghost-button publish-button" onClick={publishModel} disabled={!result?.geometry || result.dimension !== 3 || compiling || publishing}><CloudUpload size={15} /> {publishing ? "Publishing…" : "Publish"}</button>
           <button className="primary-button" onClick={downloadModel} disabled={!result?.geometry || compiling}>
