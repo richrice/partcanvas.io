@@ -1,5 +1,9 @@
 # partcanvas.io
 
+## [Open the public app →](https://partcanvas.io)
+
+Create, customize, preview, and export parametric 3D models directly at **[partcanvas.io](https://partcanvas.io)**. The hosted [API documentation](https://partcanvas.io/docs/api) covers programmatic rendering and model publishing.
+
 A native web implementation of the OpenSCAD modeling workflow. partcanvas.io parses and evaluates an OpenSCAD-compatible language in TypeScript; it does **not** ship or compile the OpenSCAD desktop binary.
 
 The product is designed around two people:
