@@ -22,7 +22,7 @@ import {
   Upload,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CodeEditor } from "./CodeEditor";
+import { CodeEditor, type CursorLocation } from "./CodeEditor";
 import { ModelViewport } from "./ModelViewport";
 import { ParameterPanel } from "./ParameterPanel";
 import { compileScad, serializeGeometry, type CompileResult, type ExportFormat } from "@/lib/scad/compiler";
@@ -68,6 +68,7 @@ export function Workspace({ initialModel }: { initialModel?: InitialWorkspaceMod
   const [mobilePanel, setMobilePanel] = useState<"code" | "preview" | "parameters">("preview");
   const [notice, setNotice] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
+  const [cursorLocation, setCursorLocation] = useState<CursorLocation>({ line: 1, column: 1 });
   const uploadRef = useRef<HTMLInputElement>(null);
   const parameterPresets = useMemo(() => Object.keys(projectFiles)
     .filter((filename) => extensionOf(filename) === "json")
@@ -306,10 +307,16 @@ export function Workspace({ initialModel }: { initialModel?: InitialWorkspaceMod
               <button className="run-button" onClick={compile}><CirclePlay size={15} fill="currentColor" /> Run</button>
             </div>
           </div>
-          <CodeEditor value={activeSource} onChange={updateActiveSource} />
+          <CodeEditor
+            value={activeSource}
+            onChange={updateActiveSource}
+            onCursorChange={setCursorLocation}
+            projectSources={editableFiles.filter((name) => name !== activeFile).map((name) => projectFiles[name])}
+            projectFiles={Object.keys(projectFiles)}
+          />
           <div className="editor-statusbar">
             <span><Check size={12} /> OpenSCAD compatible</span>
-            <span>Ln {activeSource.split("\n").length}, Col 1</span>
+            <span>Ln {cursorLocation.line}, Col {cursorLocation.column}</span>
             <span>Spaces: 2</span>
             <span>UTF-8</span>
           </div>
