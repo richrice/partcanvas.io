@@ -11,44 +11,116 @@ export const EXAMPLES: ScadExample[] = [
     name: "Phone stand",
     description: "A printable stand with an adjustable viewing angle and cable slot.",
     source: `/* [Phone] */
-phone_width = 78;   // Width of your phone [55:1:110]
-phone_depth = 12;   // Phone + case thickness [7:0.5:22]
-lip_height = 14;    // Front retaining lip [8:1:28]
+phone_width = 78;      // Overall phone width [55:1:110]
+phone_depth = 12;      // Phone + case thickness [7:0.5:22]
+lip_height = 14;       // Height of the two retaining tabs [8:1:24]
 
 /* [Stand] */
-angle = 68;         // Viewing angle [45:1:82]
-base_depth = 82;    // Front-to-back footprint [55:1:120]
-wall = 5;           // Structural wall thickness [3:0.5:9]
-cable_slot = 14;    // Charging cable opening [8:1:24]
-stand_width = max(45, phone_width - 8);
-$fn = 48;
+angle = 68;            // Phone angle measured from horizontal [50:1:82]
+base_depth = 82;       // Minimum front-to-back footprint [55:1:120]
+wall = 5;              // Base/back thickness [3:0.5:9]
+cable_slot = 14;       // Charging cable channel width [8:1:24]
+back_length = 94;      // Length of the inclined back support [75:1:125]
+clearance = 1.5;       // Extra room around phone thickness [0.5:0.5:4]
+
+/* [Hidden] */
+stand_width = max(58, phone_width - 4);
+front_margin = 8;
+lip_thickness = max(4, wall);
+rear_margin = 8;
+
+// Position of the front face of the back support.
+back_face_y =
+    front_margin +
+    lip_thickness +
+    phone_depth +
+    clearance;
+
+// Shift the angled plate so its front lower edge meets the top
+// of the base while its rear edge overlaps the base.
+back_origin_y = back_face_y + wall * sin(angle);
+back_origin_z = wall - wall * cos(angle);
+
+// Increase the footprint when a shallower viewing angle requires it.
+actual_base_depth = max(
+    base_depth,
+    back_origin_y + back_length * cos(angle) + rear_margin
+);
+
+lip_tab_width = min(
+    22,
+    max(14, (stand_width - cable_slot) / 2 - 2)
+);
+
+$fn = 64;
 
 module rounded_bar(size, radius = 3) {
-  hull() {
-    for (x = [radius, size[0] - radius])
-      for (y = [radius, size[1] - radius])
-        translate([x, y, 0]) cylinder(h = size[2], r = radius);
-  }
+    r = min(radius, min(size[0], size[1]) / 2);
+
+    hull() {
+        for (x = [r, size[0] - r])
+            for (y = [r, size[1] - r])
+                translate([x, y, 0])
+                    cylinder(h = size[2], r = r);
+    }
+}
+
+module base_and_cradle() {
+    union() {
+        // Stable base and phone shelf.
+        rounded_bar(
+            [stand_width, actual_base_depth, wall],
+            4
+        );
+
+        // Inclined phone support.
+        translate([0, back_origin_y, back_origin_z])
+            rotate([angle, 0, 0])
+                rounded_bar(
+                    [stand_width, back_length, wall],
+                    3
+                );
+
+        // Reinforcement behind the phone cradle.
+        translate([
+            0,
+            back_face_y + wall * 0.25,
+            wall
+        ])
+            rounded_bar(
+                [stand_width, wall * 2.25, wall * 0.9],
+                2
+            );
+
+        // Separate tabs retain the phone without covering
+        // the entire bottom portion of the screen.
+        for (x = [0, stand_width - lip_tab_width])
+            translate([x, front_margin, wall])
+                rounded_bar(
+                    [
+                        lip_tab_width,
+                        lip_thickness,
+                        lip_height
+                    ],
+                    min(2, lip_thickness / 2)
+                );
+    }
 }
 
 difference() {
-  union() {
-    // Stable base
-    rounded_bar([stand_width, base_depth, wall], 4);
+    base_and_cradle();
 
-    // Angled back support
-    translate([0, base_depth - wall, wall])
-      rotate([angle - 90, 0, 0])
-        rounded_bar([stand_width, 82, wall], 3);
-
-    // Front lip
-    translate([0, 8, wall])
-      rounded_bar([stand_width, phone_depth + wall, lip_height], 3);
-  }
-
-  // Cable access through the lip and base
-  translate([(stand_width - cable_slot) / 2, 0, wall])
-    cube([cable_slot, 28, lip_height + 2]);
+    // Charging cable channel through the front and phone shelf.
+    translate([
+        (stand_width - cable_slot) / 2,
+        -0.1,
+        -0.1
+    ])
+        cube([
+            cable_slot,
+            back_face_y - 0.8,
+            wall + lip_height + 1
+        ]);
 }`,
   },
   {
