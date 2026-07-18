@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { revisions } from "../db/schema";
 import { createTestDatabase } from "../db/test-db.server";
-import { readRevision, saveRevision } from "./revisions.server";
+import { readRevision, readRevisionThumbnail, saveRevision, setRevisionThumbnail } from "./revisions.server";
 
 let testDb: Awaited<ReturnType<typeof createTestDatabase>>;
 
@@ -73,5 +73,16 @@ describe("revision store", () => {
     expect(await readRevision("not-an-id", testDb.db)).toBeNull();
     expect(await readRevision("ABCDEF", testDb.db)).toBeNull();
     expect(await readRevision("a".repeat(24), testDb.db)).toBeNull();
+  });
+
+  it("sets a thumbnail exactly once and reads it back", async () => {
+    const { record } = await saveRevision({ name: "Thumbed", source: "cube([2, 2, 2]);" }, testDb.db);
+    const first = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1]);
+    expect(await setRevisionThumbnail(record.id, first, testDb.db)).toBe(true);
+    expect(await setRevisionThumbnail(record.id, new Uint8Array([0x00]), testDb.db)).toBe(false);
+    const stored = await readRevisionThumbnail(record.id, testDb.db);
+    expect([...stored!]).toEqual([...first]);
+    expect(await readRevisionThumbnail("b".repeat(24), testDb.db)).toBeNull();
+    expect(await readRevisionThumbnail("bogus", testDb.db)).toBeNull();
   });
 });

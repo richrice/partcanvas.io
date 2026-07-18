@@ -1,7 +1,8 @@
 import { getSessionUser } from "@/lib/auth/session.server";
 import { getDb } from "@/lib/db/client.server";
 import { createModel } from "@/lib/models/models.server";
-import { saveRevision } from "@/lib/models/revisions.server";
+import { saveRevision, setRevisionThumbnail } from "@/lib/models/revisions.server";
+import { decodeThumbnailDataUrl } from "@/lib/models/thumbnails.server";
 import type { HostedModelDraft } from "@/lib/models/types";
 
 // Cookie-authenticated publish (D5): no corsPreflight export, no permissive
@@ -12,6 +13,7 @@ export const maxDuration = 30;
 interface PublishBody extends HostedModelDraft {
   license?: string;
   visibility?: string;
+  thumbnail?: string;
 }
 
 export async function POST(request: Request) {
@@ -32,6 +34,8 @@ export async function POST(request: Request) {
     // model transaction is safe (worst case: an orphaned shared revision).
     // Model + version-1 history row are inserted atomically in createModel.
     const { record } = await saveRevision(body, db);
+    const thumbnail = decodeThumbnailDataUrl(body.thumbnail);
+    if (thumbnail) await setRevisionThumbnail(record.id, thumbnail, db);
     const model = await createModel({
       ownerId: sessionUser.id,
       title: body.name,

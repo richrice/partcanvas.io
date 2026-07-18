@@ -12,14 +12,43 @@ interface ModelViewportProps {
   wireframe: boolean;
   autoRotate: boolean;
   fitViewRequest: number;
+  // Receives a PNG-capture function while the viewport is mounted (P3.1
+  // thumbnails). Returns a data URL ≤ 512 KB, or null with nothing to render.
+  captureRef?: React.RefObject<(() => string | null) | null>;
 }
 
 interface ViewportState {
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
   controls: OrbitControls;
+  renderer: THREE.WebGLRenderer;
   mesh?: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
   hasFitModel: boolean;
+}
+
+const THUMBNAIL_BYTE_LIMIT = 512 * 1024;
+
+// The renderer runs without preserveDrawingBuffer, so the capture renders and
+// reads the canvas synchronously in the same frame, then downscales onto an
+// offscreen canvas. Falls to smaller sizes if the PNG exceeds the byte cap.
+function capturePng(current: ViewportState): string | null {
+  if (!current.mesh) return null;
+  current.renderer.render(current.scene, current.camera);
+  const sourceCanvas = current.renderer.domElement;
+  if (!sourceCanvas.width || !sourceCanvas.height) return null;
+  for (const target of [512, 384, 256]) {
+    const scale = Math.min(1, target / Math.max(sourceCanvas.width, sourceCanvas.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(sourceCanvas.width * scale));
+    canvas.height = Math.max(1, Math.round(sourceCanvas.height * scale));
+    const context = canvas.getContext("2d");
+    if (!context) return null;
+    context.drawImage(sourceCanvas, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL("image/png");
+    // Base64 inflates bytes by 4/3; compare against the decoded size.
+    if ((dataUrl.length - "data:image/png;base64,".length) * 3 / 4 <= THUMBNAIL_BYTE_LIMIT) return dataUrl;
+  }
+  return null;
 }
 
 function createBufferGeometry(sources: Geom3[]) {
@@ -67,7 +96,7 @@ function fitView(current: ViewportState) {
   current.hasFitModel = true;
 }
 
-export function ModelViewport({ geometries: sourceGeometries, wireframe, autoRotate, fitViewRequest }: ModelViewportProps) {
+export function ModelViewport({ geometries: sourceGeometries, wireframe, autoRotate, fitViewRequest, captureRef }: ModelViewportProps) {
   const container = useRef<HTMLDivElement>(null);
   const state = useRef<ViewportState | null>(null);
   const wireframeSetting = useRef(wireframe);
@@ -135,7 +164,8 @@ export function ModelViewport({ geometries: sourceGeometries, wireframe, autoRot
       renderer.render(scene, camera);
     };
     animate();
-    state.current = { scene, camera, controls, hasFitModel: false };
+    state.current = { scene, camera, controls, renderer, hasFitModel: false };
+    if (captureRef) captureRef.current = () => (state.current ? capturePng(state.current) : null);
     return () => {
       cancelAnimationFrame(frame);
       observer.disconnect();
@@ -143,7 +173,10 @@ export function ModelViewport({ geometries: sourceGeometries, wireframe, autoRot
       renderer.dispose();
       renderer.domElement.remove();
       state.current = null;
+      if (captureRef) captureRef.current = null;
     };
+    // The capture ref is a stable ref object; the viewport mounts once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

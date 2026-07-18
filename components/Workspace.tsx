@@ -82,6 +82,7 @@ export function Workspace({ initialModel }: { initialModel?: InitialWorkspaceMod
   const router = useRouter();
   const [cursorLocation, setCursorLocation] = useState<CursorLocation>({ line: 1, column: 1 });
   const uploadRef = useRef<HTMLInputElement>(null);
+  const thumbnailCaptureRef = useRef<(() => string | null) | null>(null);
   const parameterPresets = useMemo(() => Object.keys(projectFiles)
     .filter((filename) => extensionOf(filename) === "json")
     .sort()
@@ -213,6 +214,7 @@ export function Workspace({ initialModel }: { initialModel?: InitialWorkspaceMod
           license: publishLicense,
           visibility: publishVisibility,
           tags: publishTags.split(",").map((tag) => tag.trim()).filter(Boolean),
+          thumbnail: thumbnailCaptureRef.current?.() ?? undefined,
         }),
       });
       const payload = await response.json() as { url?: string; error?: string };
@@ -367,7 +369,7 @@ export function Workspace({ initialModel }: { initialModel?: InitialWorkspaceMod
             </div>
           </div>
           <div className="viewport-wrap">
-            <ModelViewport geometries={result?.parts ?? []} wireframe={wireframe} autoRotate={autoRotate} fitViewRequest={fitViewRequest} />
+            <ModelViewport geometries={result?.parts ?? []} wireframe={wireframe} autoRotate={autoRotate} fitViewRequest={fitViewRequest} captureRef={thumbnailCaptureRef} />
             <div className={`render-status ${error ? "error" : ""}`}>
               {compiling ? <><LoaderCircle className="spinner" size={14} /> Compiling…</> : error ? <><TriangleAlert size={14} /> {error}</> : <><span className="status-dot" /> Ready</>}
             </div>

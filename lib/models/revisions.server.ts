@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { getDb, type Database } from "../db/client.server";
 import { revisions } from "../db/schema";
 import { compileScad } from "../scad/compiler";
@@ -39,4 +39,21 @@ export async function readRevision(id: string, db: Database = getDb()): Promise<
   if (!row) return null;
   const record = row.record;
   return record?.version === 1 && record.id === id && typeof record.source === "string" ? record : null;
+}
+
+// Thumbnails are immutable once set, like the revision content they belong to
+// (D8): the guarded update keeps the first capture and ignores later ones.
+export async function setRevisionThumbnail(id: string, png: Uint8Array, db: Database = getDb()): Promise<boolean> {
+  if (!CONTENT_ID.test(id)) return false;
+  const updated = await db.update(revisions)
+    .set({ thumbnail: png })
+    .where(and(eq(revisions.id, id), isNull(revisions.thumbnail)))
+    .returning({ id: revisions.id });
+  return updated.length > 0;
+}
+
+export async function readRevisionThumbnail(id: string, db: Database = getDb()): Promise<Uint8Array | null> {
+  if (!CONTENT_ID.test(id)) return null;
+  const [row] = await db.select({ thumbnail: revisions.thumbnail }).from(revisions).where(eq(revisions.id, id)).limit(1);
+  return row?.thumbnail ?? null;
 }
