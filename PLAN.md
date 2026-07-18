@@ -87,7 +87,7 @@ API, session-authenticated, no permissive CORS: `/api/auth/[...all]` (Better Aut
 
 ### Phase 0 — Foundations
 
-- [ ] **P0.1** Create `community-platform` branch from `main`. Add deps: `drizzle-orm`, `drizzle-kit`, `pg`, `@types/pg`, `@electric-sql/pglite` (dev). Add npm scripts: `typecheck` (`tsc --noEmit`), `db:generate` (`drizzle-kit generate`).
+- [x] **P0.1** Create `community-platform` branch from `main`. Add deps: `drizzle-orm`, `drizzle-kit`, `pg`, `@types/pg`, `@electric-sql/pglite` (dev). Add npm scripts: `typecheck` (`tsc --noEmit`), `db:generate` (`drizzle-kit generate`).
   *Done when: install is clean, scripts run, existing tests still pass.*
 - [ ] **P0.2** DB plumbing: `drizzle.config.ts`; `lib/db/schema.ts` (start with `revisions` only); `lib/db/client.server.ts` (pg Pool from `DATABASE_URL`, drizzle instance); generated SQL migrations committed under `drizzle/`; `instrumentation.ts` running `migrate()` at boot (skip cleanly when `DATABASE_URL` is unset so `next build` works).
   *Done when: dev server boots and migrates against a local Postgres.*
@@ -156,3 +156,4 @@ Append entries here; do not rewrite old ones.
 | Date | Task | Summary / deviations |
 |------|------|----------------------|
 | — | — | Plan created; no implementation yet |
+| 2026-07-18 | P0.1 | Branch created; drizzle-orm/pg (deps) + drizzle-kit/@types/pg/@electric-sql/pglite (dev) installed; `typecheck` + `db:generate` scripts added. `db:generate` runs but needs drizzle.config.ts (P0.2) to do anything. |
