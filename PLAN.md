@@ -104,7 +104,7 @@ API, session-authenticated, no permissive CORS: `/api/auth/[...all]` (Better Aut
 - [x] **P1.2** Serve from Postgres: `POST /api/models`, `GET /api/models/:id`, and `/m/:id` use the revision store, with filesystem fallback on read (D14). Response contracts unchanged (existing `route.test.ts` files keep passing, updated only for setup).
 - [x] **P1.3** Import script `scripts/import-models.ts` (plain TS; Node 24 runs it directly): reads `$PARTCANVAS_DATA_DIR/*.json`, upserts into `revisions`, idempotent, prints a summary. **[HUMAN]** run it against production data (e.g. `railway run node scripts/import-models.ts`).
 - [x] **P1.4** `/api/health` checks DB connectivity (replacing the writable-directory probe as the readiness signal; report both during transition). Audit `/api/capabilities` for storage claims.
-- [ ] **P1.5** Docs sweep: README storage/deployment sections and CLAUDE.md reflect Postgres; note the D14 transition state.
+- [x] **P1.5** Docs sweep: README storage/deployment sections and CLAUDE.md reflect Postgres; note the D14 transition state.
 
 ### Phase 2 — Accounts
 
@@ -164,3 +164,4 @@ Append entries here; do not rewrite old ones.
 | 2026-07-18 | P1.2 | lib/models/hosted.server.ts transition layer (publish→Postgres when configured, read→Postgres then filesystem; filesystem-only when no DB, keeping DB-less dev working). Routes + /m/:id switched; setDatabaseForTests seam added to client.server.ts. Route tests run on PGlite + new fallback test. E2E-verified against dev server + compose Postgres. |
 | 2026-07-18 | P1.3 | Script done (standalone pg + Node built-ins so `node scripts/import-models.ts` runs directly; preserves createdAt; ON CONFLICT idempotent; PGlite-tested + CLI-verified against compose Postgres). **[HUMAN] still pending: run against production data, e.g. `railway run node scripts/import-models.ts` (needs P0.5 DATABASE_URL).** |
 | 2026-07-18 | P1.4 | Health reports `database` (inspectDatabase in client.server.ts) + legacy `storage`; readiness = DB reachability when configured, else writable dir. Capabilities `service.persistence` now dynamic; /docs/api health paragraph updated. Tests cover both readiness modes. |
+| 2026-07-18 | P1.5 | README production-deployment section rewritten around Postgres + D14 fallback/import; CLAUDE.md commands (typecheck, db:generate, compose postgres) + storage-layer description + deployment/health semantics updated. Phase 1 complete except the P1.3 [HUMAN] production run. |

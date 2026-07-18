@@ -8,12 +8,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm run dev                          # dev server at http://localhost:3000
 npm run build                        # production build (Next.js standalone output)
 npm run lint                         # eslint
-npm test                             # run all tests once (vitest, node environment)
+npm run typecheck                    # tsc --noEmit
+npm test                             # run all tests once (vitest, node environment; DB tests use in-memory PGlite)
 npm run test:watch                   # vitest watch mode
 npx vitest run lib/scad/engine.test.ts        # single test file
 npx vitest run -t "roof"             # tests matching a name
+npm run db:generate                  # regenerate SQL migrations in drizzle/ after editing lib/db/schema.ts
 make deploy                          # deploy working tree to Railway (requires railway CLI)
-docker compose up --build            # local production run; models volume at /data/models
+docker compose up --build            # local production run (app + Postgres 17)
+docker compose up -d postgres        # just Postgres, for `npm run dev` (DATABASE_URL in .env.example)
 ```
 
 Requires Node >= 24. Tests are colocated with source (`*.test.ts` next to the file they cover). Path alias `@/*` maps to the repo root.
@@ -45,9 +48,9 @@ Alongside the pipeline:
 - `components/Workspace.tsx` — the main client component; owns all editor/parameter/compile state and calls `compileScad` directly in the browser. Composes `CodeEditor` (CodeMirror), `ModelViewport` (three.js), and `ParameterPanel`.
 - `app/page.tsx` renders an empty Workspace; `app/m/[id]/page.tsx` reads a hosted model server-side and passes it as `initialModel`.
 - `app/api/` — Node-runtime routes: `render` (script → STL/OBJ/3MF/STEP/SVG/DXF or `--summary`-style JSON), `parameters`, `models` (publish/fetch), `health`, `capabilities`. CORS is wide open via `next.config.ts` headers plus `lib/api/cors.ts` preflight; new API routes need `export const OPTIONS = corsPreflight`.
-- `lib/models/store.server.ts` — filesystem store for published models: immutable JSON records keyed by a content-derived 24-hex ID, written atomically with hard links so concurrent identical publishes converge. Storage dir comes from `PARTCANVAS_DATA_DIR` (default `.data/models`, reported as `persistent: false` by `/api/health`).
+- Hosted-model storage (mid-transition to Postgres, see PLAN.md D14): published models are immutable content-addressed **revisions** (24-hex sha256-derived ID). `lib/db/` holds the Drizzle schema (`schema.ts`), the pg/PGlite client seam (`client.server.ts`), and the PGlite test harness (`test-db.server.ts`); migrations live in `drizzle/` and run at boot via `instrumentation.ts` when `DATABASE_URL` is set. `lib/models/revisions.server.ts` is the Postgres store (`ON CONFLICT DO NOTHING` dedup); `lib/models/store.server.ts` is the legacy filesystem store (hard-link atomicity, `PARTCANVAS_DATA_DIR`); `lib/models/hosted.server.ts` is the transition layer routes use — Postgres-first with filesystem fallback on read, filesystem-only when no database is configured. Shared draft validation/hashing sits in `lib/models/draft.server.ts`.
 - `lib/share.ts` — serverless share links: model source, files, and parameter values gzip-compressed (fflate) and base64url-encoded into the URL.
 
 ## Deployment
 
-Railway, via `railway.json` + `Dockerfile` (node:24-alpine, Next standalone output, unprivileged user, `PARTCANVAS_DATA_DIR=/data/models` on a named volume). `make deploy` runs `railway up` on the working tree — it does not deploy from git. `/api/health` is the readiness check and returns 503 if the data directory is unwritable.
+Railway, via `railway.json` + `Dockerfile` (node:24-alpine, Next standalone output, unprivileged user, `PARTCANVAS_DATA_DIR=/data/models` on a named volume, `drizzle/` copied in for boot migrations). `make deploy` runs `railway up` on the working tree — it does not deploy from git. `/api/health` is the readiness check: with `DATABASE_URL` set it returns 503 when Postgres is unreachable (and reports the legacy filesystem status alongside); without a database it returns 503 if the data directory is unwritable.

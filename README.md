@@ -26,18 +26,16 @@ Open [http://localhost:3000](http://localhost:3000). Schema migrations apply aut
 
 ## Production deployment
 
-The included image uses Next.js standalone output on Node.js 24 LTS and runs as an unprivileged user. Start it with a durable named volume:
+The included image uses Next.js standalone output on Node.js 24 LTS and runs as an unprivileged user. Start the full stack (app + Postgres 17) with:
 
 ```bash
 docker compose up --build
 curl http://localhost:3000/api/health
 ```
 
-Compose mounts `partcanvas-models` at `/data/models`; rebuilding or replacing the container leaves published models intact. Do not use `docker compose down -v` unless deleting that model library is intentional. Set `PARTCANVAS_PORT` in `.env` to change the host port.
+Published models are immutable JSON revisions keyed by a content-derived ID and stored in Postgres (`DATABASE_URL`); concurrent identical publishes resolve to the same stored record. Schema migrations run automatically at server boot, and the readiness endpoint returns `503` while the database is unreachable. Compose keeps Postgres data on the `partcanvas-postgres` named volume; do not use `docker compose down -v` unless deleting the model library is intentional. Set `PARTCANVAS_PORT` in `.env` to change the host port.
 
-For a bare Node deployment, run `npm ci`, `npm run build`, and `npm start`, and set `PARTCANVAS_DATA_DIR` to a durable mounted directory. The readiness endpoint returns `503` if that directory cannot be written. A default local `.data/models` directory is convenient for development but the health payload marks it as `persistent: false` because no production mount was explicitly configured.
-
-Hosted records are immutable JSON objects keyed by a content-derived ID. Concurrent identical publishes resolve to the same stored record. Run one application replica per local volume, or mount the same hard-link-capable read/write filesystem into every replica so all hosted URLs resolve consistently.
+The pre-Postgres filesystem store remains as a read fallback during the storage transition: records under `PARTCANVAS_DATA_DIR` (compose volume `partcanvas-models`) keep resolving until they are imported with `node scripts/import-models.ts` (idempotent; needs `DATABASE_URL` and `PARTCANVAS_DATA_DIR`). Deployments without `DATABASE_URL` fall back to filesystem-only storage: set `PARTCANVAS_DATA_DIR` to a durable mounted directory, and readiness then reports whether that directory is writable (`persistent: false` marks the default `.data/models` development path).
 
 ## API
 
