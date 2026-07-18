@@ -113,7 +113,7 @@ export default function ApiDocsPage() {
 
           <section id="models" className="docs-section">
             <div className="endpoint-title"><span className="method">POST</span><code>/api/models</code></div>
-            <p>Validate and publish an immutable model record. Send <code>name</code>, <code>source</code>, and optional <code>description</code>, <code>files</code>, <code>parameters</code>, and <code>tags</code>. The response includes a content-derived ID and hosted customizer URL at <code>/m/:id</code>.</p>
+            <p>Anonymous publishing is retired: this endpoint now returns <code>401</code>. Publishing requires signing in on <a href="https://partcanvas.io">partcanvas.io</a>, which keeps every published model attached to an owner. Programmatic publishing with per-account bearer API tokens is planned; serverless share links remain the anonymous, no-account way to pass a model around.</p>
             <div className="endpoint-title secondary-endpoint"><span className="method get">GET</span><code>/api/models/:id</code></div>
             <p>Retrieve the source project, default customizer values, inferred parameter schema, and verified geometry metrics for a hosted model.</p>
           </section>

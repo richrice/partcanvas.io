@@ -185,30 +185,14 @@ export function Workspace({ initialModel }: { initialModel?: InitialWorkspaceMod
 
   const publishModel = async () => {
     if (!result?.geometry || result.dimension !== 3 || publishing) return;
-    // Signed-in publish collects social metadata and creates an owned model
-    // page; the anonymous flow keeps the legacy hosted-revision behavior.
-    if (authSession?.user) {
-      setPublishError(null);
-      setShowPublishDialog(true);
+    // Publishing requires an account (D6); Share links stay anonymous.
+    if (!authSession?.user) {
+      setNotice("Sign in to publish — Share links work without an account");
+      window.setTimeout(() => setNotice(null), 2600);
       return;
     }
-    setPublishing(true);
-    try {
-      const response = await fetch("/api/models", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: modelName, source, files: projectFiles, parameters }),
-      });
-      const payload = await response.json() as { url?: string; error?: string };
-      if (!response.ok || !payload.url) throw new Error(payload.error || "Could not publish model");
-      await navigator.clipboard.writeText(`${window.location.origin}${payload.url}`);
-      setNotice("Hosted model link copied");
-    } catch (publishError) {
-      setNotice(publishError instanceof Error ? publishError.message : "Could not publish model");
-    } finally {
-      setPublishing(false);
-      window.setTimeout(() => setNotice(null), 2600);
-    }
+    setPublishError(null);
+    setShowPublishDialog(true);
   };
 
   const publishOwnedModel = async (event: React.FormEvent) => {

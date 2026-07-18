@@ -2,7 +2,7 @@
 
 ## [Open the public app →](https://partcanvas.io)
 
-Create, customize, preview, and export parametric 3D models directly at **[partcanvas.io](https://partcanvas.io)**. The hosted [API documentation](https://partcanvas.io/docs/api) covers programmatic rendering and model publishing.
+Create, customize, preview, and export parametric 3D models directly at **[partcanvas.io](https://partcanvas.io)**. The hosted [API documentation](https://partcanvas.io/docs/api) covers programmatic rendering and model hosting.
 
 A native web implementation of the OpenSCAD modeling workflow. partcanvas.io parses and evaluates an OpenSCAD-compatible language in TypeScript; it does **not** ship or compile the OpenSCAD desktop binary.
 
@@ -78,6 +78,6 @@ The customizer recognizes OpenSCAD-style number, string, boolean, select, and on
 
 Multi-file projects are supported in the editor and API. Supply a `files` object keyed by project-relative path, then use normal `include <...>` and `use <...>` directives. Native `import()` supports STL, OBJ, SVG, and DXF assets, while `surface()` accepts numeric text grids and PNG heightmaps. Text assets may be sent directly and binary assets use standard base64 data URLs. The editor encodes uploaded assets automatically. Shared links compress the main source, library files, imported assets, and selected customizer values into one serverless URL.
 
-Models can also be published as immutable, content-addressed records with `POST /api/models`. Hosted customizer pages use `/m/:id`. The default Node storage adapter writes to `.data/models`; set the task-specific `PARTCANVAS_DATA_DIR` environment variable to a mounted persistent-volume path in production.
+Signed-in users publish models as immutable, content-addressed revisions; hosted customizer pages use `/m/:id` and stay readable via `GET /api/models/:id`. Anonymous `POST /api/models` publishing is retired and returns `401` — sign in to publish, or use share links for accountless sharing. Programmatic publishing with per-account bearer API tokens is planned.
 
 OpenSCAD is GPL-licensed and is a separate project. partcanvas.io uses an independent TypeScript parser/evaluator, a pure-TypeScript straight-skeleton implementation, and the JavaScript JSCAD geometry toolkit. It does not use Emscripten, WebAssembly builds of OpenSCAD, or the OpenSCAD binary.
