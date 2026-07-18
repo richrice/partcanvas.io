@@ -1,3 +1,4 @@
+import { checkRateLimit, PUBLISH_RULE, rateLimitResponse } from "@/lib/api/rate-limit.server";
 import { getSessionUser } from "@/lib/auth/session.server";
 import { getDb } from "@/lib/db/client.server";
 import { publishModelVersion, readModel } from "@/lib/models/models.server";
@@ -21,6 +22,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   if (model.ownerId !== sessionUser.id) {
     return Response.json({ error: "Only the owner can publish updates — fork it instead" }, { status: 403 });
   }
+  const decision = checkRateLimit(`publish:${sessionUser.id}`, PUBLISH_RULE);
+  if (!decision.allowed) return rateLimitResponse(decision);
 
   let body: HostedModelDraft & { thumbnail?: string };
   try {

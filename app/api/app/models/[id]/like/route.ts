@@ -1,3 +1,4 @@
+import { checkRateLimit, rateLimitResponse, SOCIAL_RULE } from "@/lib/api/rate-limit.server";
 import { getSessionUser } from "@/lib/auth/session.server";
 import { toggleLike } from "@/lib/models/likes.server";
 import { readModel } from "@/lib/models/models.server";
@@ -9,6 +10,8 @@ export const runtime = "nodejs";
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   const sessionUser = await getSessionUser(request);
   if (!sessionUser) return Response.json({ error: "Sign in to like models" }, { status: 401 });
+  const decision = checkRateLimit(`social:${sessionUser.id}`, SOCIAL_RULE);
+  if (!decision.allowed) return rateLimitResponse(decision);
   const { id } = await context.params;
   const model = await readModel(id);
   // Private models stay invisible to non-owners, likes included.

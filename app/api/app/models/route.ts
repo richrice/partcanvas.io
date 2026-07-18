@@ -1,3 +1,4 @@
+import { checkRateLimit, PUBLISH_RULE, rateLimitResponse } from "@/lib/api/rate-limit.server";
 import { getSessionUser } from "@/lib/auth/session.server";
 import { getDb } from "@/lib/db/client.server";
 import { createModel } from "@/lib/models/models.server";
@@ -20,6 +21,8 @@ export async function POST(request: Request) {
   const sessionUser = await getSessionUser(request);
   if (!sessionUser) return Response.json({ error: "Sign in to publish models" }, { status: 401 });
   if (!sessionUser.username) return Response.json({ error: "Choose a username before publishing" }, { status: 409 });
+  const decision = checkRateLimit(`publish:${sessionUser.id}`, PUBLISH_RULE);
+  if (!decision.allowed) return rateLimitResponse(decision);
 
   let body: PublishBody;
   try {

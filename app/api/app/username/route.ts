@@ -1,4 +1,5 @@
 import { and, eq, isNull } from "drizzle-orm";
+import { checkRateLimit, rateLimitResponse, SOCIAL_RULE } from "@/lib/api/rate-limit.server";
 import { getSessionUser } from "@/lib/auth/session.server";
 import { validateUsername } from "@/lib/auth/username";
 import { getDb } from "@/lib/db/client.server";
@@ -15,6 +16,8 @@ export async function POST(request: Request) {
   const sessionUser = await getSessionUser(request);
   if (!sessionUser) return Response.json({ error: "Sign in to choose a username" }, { status: 401 });
   if (sessionUser.username) return Response.json({ error: "Your username is already set" }, { status: 409 });
+  const decision = checkRateLimit(`social:${sessionUser.id}`, SOCIAL_RULE);
+  if (!decision.allowed) return rateLimitResponse(decision);
 
   let username = "";
   try {

@@ -4,6 +4,7 @@ import { loadOpenScadParameterFile, resolveOpenScadParameterSet } from "@/lib/sc
 import { resolveSourceFiles } from "@/lib/scad/files";
 import { CORS_HEADERS, corsPreflight } from "@/lib/api/cors";
 import { PARTCANVAS_API_VERSION, PARTCANVAS_ENGINE } from "@/lib/api/meta";
+import { checkRateLimit, clientIp, COMPILE_RULE, rateLimitResponse } from "@/lib/api/rate-limit.server";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -103,6 +104,8 @@ function safeFiles(value: unknown): Record<string, string> {
 
 export async function POST(request: Request) {
   const requestStart = performance.now();
+  const decision = checkRateLimit(`render:${clientIp(request)}`, COMPILE_RULE);
+  if (!decision.allowed) return rateLimitResponse(decision, CORS_HEADERS);
   try {
     const body = await request.json() as RenderRequest;
     let requestedSummary: Set<SummaryCategory> | null;

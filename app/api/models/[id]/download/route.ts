@@ -1,4 +1,5 @@
 import { CORS_HEADERS, corsPreflight } from "@/lib/api/cors";
+import { checkRateLimit, clientIp, rateLimitResponse, SOCIAL_RULE } from "@/lib/api/rate-limit.server";
 import { getSessionUser } from "@/lib/auth/session.server";
 import { readModel, recordDownload } from "@/lib/models/models.server";
 import { canViewModel } from "@/lib/models/visibility";
@@ -11,6 +12,8 @@ export const runtime = "nodejs";
 export const OPTIONS = corsPreflight;
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
+  const decision = checkRateLimit(`download:${clientIp(request)}`, SOCIAL_RULE);
+  if (!decision.allowed) return rateLimitResponse(decision, CORS_HEADERS);
   const { id } = await context.params;
   const model = await readModel(id);
   const viewer = model?.visibility === "private" ? await getSessionUser(request) : null;

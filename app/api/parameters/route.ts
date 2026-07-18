@@ -1,6 +1,7 @@
 import { parse } from "@/lib/scad/parser";
 import { defaultParameterValues, extractParameters, validateParameterOverrides, type ParameterInput } from "@/lib/scad/parameters";
 import { corsPreflight } from "@/lib/api/cors";
+import { checkRateLimit, clientIp, COMPILE_RULE, rateLimitResponse } from "@/lib/api/rate-limit.server";
 import { resolveSourceFiles } from "@/lib/scad/files";
 import { inspectOpenScadParameterSets, loadOpenScadParameterFile, resolveOpenScadParameterSet } from "@/lib/scad/parameter-sets";
 
@@ -27,6 +28,8 @@ function safeValues(value: unknown) {
 }
 
 export async function POST(request: Request) {
+  const decision = checkRateLimit(`parameters:${clientIp(request)}`, COMPILE_RULE);
+  if (!decision.allowed) return rateLimitResponse(decision);
   try {
     const body = await request.json() as {
       source?: unknown;

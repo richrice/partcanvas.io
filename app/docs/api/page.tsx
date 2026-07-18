@@ -127,6 +127,10 @@ export default function ApiDocsPage() {
             <h2>Error responses</h2>
             <p>Validation and compile failures use JSON with an <code>error</code> string. Invalid input returns <code>400</code>, oversized source returns <code>413</code>, and parse or geometry failures return <code>422</code>.</p>
           </section>
+          <section id="rate-limits" className="docs-section">
+            <h2>Rate limits</h2>
+            <p>Requests beyond the limits return <code>429</code> with a <code>retry-after</code> header (seconds). Compute endpoints (<code>/api/render</code>, <code>/api/parameters</code>) allow bursts of 60 requests per client address, refilling at 60 per minute. Signed-in publishing allows 12 publishes per hour per account; likes, forks, and download beacons allow bursts of 60, refilling at 30 per minute. Limits are per application instance and may be tuned as usage grows.</p>
+          </section>
         </article>
       </div>
     </main>
