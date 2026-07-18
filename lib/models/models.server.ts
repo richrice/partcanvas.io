@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { and, desc, eq } from "drizzle-orm";
+import { and, arrayContains, desc, eq, sql, type SQL } from "drizzle-orm";
 import { getDb, type Database } from "../db/client.server";
 import { isUniqueViolation } from "../db/errors.server";
 import { modelRevisions, models, user } from "../db/schema";
@@ -98,6 +98,49 @@ export async function getModelByOwnerSlug(username: string, slug: string, db: Da
     .where(and(eq(user.username, username), eq(models.slug, slug)))
     .limit(1);
   return row ?? null;
+}
+
+export type ExploreSort = "newest" | "liked";
+
+export interface ExploreOptions {
+  sort?: ExploreSort;
+  tag?: string;
+  query?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface ExploreResult {
+  models: (ModelRow & { ownerUsername: string | null })[];
+  page: number;
+  hasMore: boolean;
+}
+
+// Browse/search over public models only (D11): Postgres FTS via the generated
+// tsvector, tag filter over the array column, newest/most-liked sorts, and
+// fetch-one-extra pagination.
+export async function exploreModels(options: ExploreOptions = {}, db: Database = getDb()): Promise<ExploreResult> {
+  const page = Math.max(1, Math.floor(options.page ?? 1));
+  const pageSize = Math.min(48, Math.max(1, Math.floor(options.pageSize ?? 24)));
+  const conditions: SQL[] = [eq(models.visibility, "public")];
+  const tag = options.tag?.trim().toLowerCase();
+  if (tag) conditions.push(arrayContains(models.tags, [tag]));
+  const query = options.query?.trim();
+  if (query) conditions.push(sql`${models.search} @@ websearch_to_tsquery('english', ${query})`);
+  const rows = await db.select({ model: models, ownerUsername: user.username })
+    .from(models)
+    .innerJoin(user, eq(models.ownerId, user.id))
+    .where(and(...conditions))
+    .orderBy(...(options.sort === "liked"
+      ? [desc(models.likeCount), desc(models.createdAt)]
+      : [desc(models.createdAt)]))
+    .limit(pageSize + 1)
+    .offset((page - 1) * pageSize);
+  return {
+    models: rows.slice(0, pageSize).map((row) => ({ ...row.model, ownerUsername: row.ownerUsername })),
+    page,
+    hasMore: rows.length > pageSize,
+  };
 }
 
 // Profile listing: public models only, unless the viewer is the owner —

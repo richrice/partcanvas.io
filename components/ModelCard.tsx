@@ -7,13 +7,14 @@ import type { Visibility } from "@/lib/models/types";
 export interface ModelCardProps {
   href: string;
   title: string;
+  author?: string;
   likeCount: number;
   downloadCount: number;
   thumbnailUrl: string;
   visibility: Visibility;
 }
 
-export function ModelCard({ href, title, likeCount, downloadCount, thumbnailUrl, visibility }: ModelCardProps) {
+export function ModelCard({ href, title, author, likeCount, downloadCount, thumbnailUrl, visibility }: ModelCardProps) {
   const [thumbnailFailed, setThumbnailFailed] = useState(false);
   return (
     <a className="model-card" href={href}>
@@ -25,6 +26,7 @@ export function ModelCard({ href, title, likeCount, downloadCount, thumbnailUrl,
       </span>
       <span className="model-card-body">
         <strong title={title}>{title}</strong>
+        {author ? <span className="model-card-author">by {author}</span> : null}
         <span className="model-card-meta">
           <span><Heart size={12} /> {likeCount}</span>
           <span><Download size={12} /> {downloadCount}</span>
