@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Workspace } from "@/components/Workspace";
 import { getPageSessionUser } from "@/lib/auth/session.server";
+import { hasLiked } from "@/lib/models/likes.server";
 import { getModelByOwnerSlug } from "@/lib/models/models.server";
 import { readRevision } from "@/lib/models/revisions.server";
 import { canViewModel } from "@/lib/models/visibility";
@@ -17,7 +18,7 @@ async function loadVisibleModel(username: string, slug: string) {
   if (!found) return null;
   const viewer = await getPageSessionUser();
   if (!canViewModel(found.model, viewer?.id)) return null;
-  return found;
+  return { ...found, viewer };
 }
 
 export async function generateMetadata({ params }: ModelPageProps): Promise<Metadata> {
@@ -37,6 +38,7 @@ export default async function ModelPage({ params }: ModelPageProps) {
   if (!found) notFound();
   const revision = await readRevision(found.model.headRevisionId);
   if (!revision) notFound();
+  const viewerLiked = found.viewer ? await hasLiked(found.model.id, found.viewer.id) : false;
   return (
     <Workspace
       initialModel={{
@@ -56,6 +58,7 @@ export default async function ModelPage({ params }: ModelPageProps) {
         likeCount: found.model.likeCount,
         downloadCount: found.model.downloadCount,
         tags: found.model.tags,
+        viewerLiked,
       }}
     />
   );

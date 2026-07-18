@@ -295,3 +295,4 @@ input[type="range"]::-webkit-slider-thumb { margin-top: -5px; width: 13px; heigh
 .model-card-visibility { color: #b9a26b; }
 .settings-card { margin: 12px auto 0; }
 .settings-saved { display: flex; align-items: center; gap: 6px; color: var(--accent); font-size: 12px; }
+.social-count.liked { color: #e8788a; }

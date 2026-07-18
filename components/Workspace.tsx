@@ -61,6 +61,7 @@ export interface SocialChromeModel {
   likeCount: number;
   downloadCount: number;
   tags: string[];
+  viewerLiked: boolean;
 }
 
 export function Workspace({ initialModel, social }: { initialModel?: InitialWorkspaceModel; social?: SocialChromeModel }) {
@@ -94,6 +95,8 @@ export function Workspace({ initialModel, social }: { initialModel?: InitialWork
   const [publishVisibility, setPublishVisibility] = useState<Visibility>("public");
   const [publishTags, setPublishTags] = useState("");
   const [publishError, setPublishError] = useState<string | null>(null);
+  const [liked, setLiked] = useState(social?.viewerLiked ?? false);
+  const [likeCount, setLikeCount] = useState(social?.likeCount ?? 0);
   const { data: authSession } = authClient.useSession();
   const router = useRouter();
   const [cursorLocation, setCursorLocation] = useState<CursorLocation>({ line: 1, column: 1 });
@@ -244,6 +247,29 @@ export function Workspace({ initialModel, social }: { initialModel?: InitialWork
     }
   };
 
+  const toggleLike = async () => {
+    if (!social) return;
+    if (!authSession?.user) {
+      setNotice("Sign in to like models");
+      window.setTimeout(() => setNotice(null), 2200);
+      return;
+    }
+    // Optimistic flip, reconciled from (or rolled back by) the server.
+    const nextLiked = !liked;
+    setLiked(nextLiked);
+    setLikeCount((count) => count + (nextLiked ? 1 : -1));
+    try {
+      const response = await fetch(`/api/app/models/${social.modelId}/like`, { method: "POST" });
+      const payload = await response.json() as { liked?: boolean; likeCount?: number; error?: string };
+      if (!response.ok || payload.liked === undefined || payload.likeCount === undefined) throw new Error(payload.error);
+      setLiked(payload.liked);
+      setLikeCount(payload.likeCount);
+    } catch {
+      setLiked(!nextLiked);
+      setLikeCount((count) => count + (nextLiked ? -1 : 1));
+    }
+  };
+
   const dimensions = result?.metrics.dimensions;
   const editableFiles = Object.keys(projectFiles).filter(isEditableProjectFile).sort();
   const assetFiles = Object.keys(projectFiles).filter((name) => !isEditableProjectFile(name)).sort();
@@ -325,7 +351,9 @@ export function Workspace({ initialModel, social }: { initialModel?: InitialWork
           <div className="social-actions">
             {social.tags.slice(0, 4).map((tag) => <span className="social-tag" key={tag}>{tag}</span>)}
             <span className="license-badge" title="License">{social.license}</span>
-            <button className="ghost-button social-count" disabled title="Likes coming soon"><Heart size={14} /> {social.likeCount}</button>
+            <button className={`ghost-button social-count ${liked ? "liked" : ""}`} onClick={toggleLike} title={liked ? "Unlike" : "Like"}>
+              <Heart size={14} fill={liked ? "currentColor" : "none"} /> {likeCount}
+            </button>
             <button className="ghost-button social-count" disabled title="Forking coming soon"><GitFork size={14} /> Fork</button>
             <span className="social-count-static" title="Downloads"><Download size={14} /> {social.downloadCount}</span>
           </div>
