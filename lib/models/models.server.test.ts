@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { modelRevisions, user } from "../db/schema";
 import { createTestDatabase } from "../db/test-db.server";
-import { createModel, findPublicModelByHeadRevision, getModelByOwnerSlug, listModelsByOwner, readModel, slugify } from "./models.server";
+import { createModel, findPublicModelByHeadRevision, getForkLineage, getModelByOwnerSlug, listModelsByOwner, readModel, slugify } from "./models.server";
 import { saveRevision } from "./revisions.server";
 
 let testDb: Awaited<ReturnType<typeof createTestDatabase>>;
@@ -115,5 +115,26 @@ describe("model store", () => {
       ["remix"],
     );
     expect(hits.rows).toEqual([{ id: fork.id }]);
+  });
+
+  it("reports fork lineage in both directions, public forks only", async () => {
+    const source = await getModelByOwnerSlug("owner-one", "phone-stand", testDb.db);
+    const fork = await getModelByOwnerSlug("owner-two", "phone-stand-remix", testDb.db);
+
+    const forkLineage = await getForkLineage(fork!.model, testDb.db);
+    expect(forkLineage.forkedFrom).toEqual({ title: "Phone Stand", slug: "phone-stand", ownerUsername: "owner-one" });
+
+    const sourceLineage = await getForkLineage(source!.model, testDb.db);
+    expect(sourceLineage.forkCount).toBe(1);
+    expect(sourceLineage.forks).toEqual([{ title: "Phone stand remix", slug: "phone-stand-remix", ownerUsername: "owner-two" }]);
+
+    // A private fork disappears from counts and listings.
+    await createModel({
+      ownerId: "owner-2", title: "Secret remix", revisionId,
+      visibility: "private", forkedFromModelId: source!.model.id, forkedFromRevisionId: revisionId,
+    }, testDb.db);
+    const after = await getForkLineage(source!.model, testDb.db);
+    expect(after.forkCount).toBe(1);
+    expect(after.forks).toHaveLength(1);
   });
 });

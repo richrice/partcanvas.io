@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { and, arrayContains, desc, eq, sql, type SQL } from "drizzle-orm";
+import { and, arrayContains, count, desc, eq, sql, type SQL } from "drizzle-orm";
 import { getDb, type Database } from "../db/client.server";
 import { isUniqueViolation } from "../db/errors.server";
 import { modelRevisions, models, user } from "../db/schema";
@@ -114,6 +114,42 @@ export async function getModelByOwnerSlug(username: string, slug: string, db: Da
     .where(and(eq(user.username, username), eq(models.slug, slug)))
     .limit(1);
   return row ?? null;
+}
+
+export interface ForkLink {
+  title: string;
+  slug: string;
+  ownerUsername: string | null;
+}
+
+export interface ForkLineage {
+  forkedFrom: ForkLink | null;
+  forkCount: number;
+  forks: ForkLink[];
+}
+
+// Lineage for the model page (P4.2). The forked-from link is hidden if the
+// source has since gone private; fork counts and the fork list are public
+// forks only, most-liked first.
+export async function getForkLineage(model: ModelRow, db: Database = getDb()): Promise<ForkLineage> {
+  let forkedFrom: ForkLink | null = null;
+  if (model.forkedFromModelId) {
+    const [row] = await db.select({ title: models.title, slug: models.slug, ownerUsername: user.username, visibility: models.visibility })
+      .from(models)
+      .innerJoin(user, eq(models.ownerId, user.id))
+      .where(eq(models.id, model.forkedFromModelId))
+      .limit(1);
+    if (row && row.visibility !== "private") forkedFrom = { title: row.title, slug: row.slug, ownerUsername: row.ownerUsername };
+  }
+  const publicForks = and(eq(models.forkedFromModelId, model.id), eq(models.visibility, "public"));
+  const forks = await db.select({ title: models.title, slug: models.slug, ownerUsername: user.username })
+    .from(models)
+    .innerJoin(user, eq(models.ownerId, user.id))
+    .where(publicForks)
+    .orderBy(desc(models.likeCount), desc(models.createdAt))
+    .limit(12);
+  const [total] = await db.select({ count: count() }).from(models).where(publicForks);
+  return { forkedFrom, forkCount: total.count, forks };
 }
 
 // Revision permalinks link back to the community page when the revision is

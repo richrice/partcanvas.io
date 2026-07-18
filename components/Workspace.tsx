@@ -63,6 +63,9 @@ export interface SocialChromeModel {
   downloadCount: number;
   tags: string[];
   viewerLiked: boolean;
+  forkedFrom?: { title: string; author: string; url: string };
+  forkCount: number;
+  forks: { title: string; author: string; url: string }[];
 }
 
 // Revision permalinks (/m/:id) link back to the community model page whose
@@ -263,6 +266,7 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
   };
 
   const [forking, setForking] = useState(false);
+  const [showForks, setShowForks] = useState(false);
   const forkCurrentModel = async () => {
     if (!social || forking) return;
     if (!authSession?.user) {
@@ -393,6 +397,9 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
           <div className="social-main">
             <strong className="social-title">{social.title}</strong>
             <span className="social-author">by <a href={`/u/${social.authorUsername}`}>{social.authorUsername}</a></span>
+            {social.forkedFrom && (
+              <span className="social-author social-lineage">forked from <a href={social.forkedFrom.url}>{social.forkedFrom.title}</a> by <a href={`/u/${social.forkedFrom.author}`}>{social.forkedFrom.author}</a></span>
+            )}
             {social.description ? <span className="social-description" title={social.description}>{social.description}</span> : null}
           </div>
           <div className="social-actions">
@@ -404,6 +411,21 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
             <button className="ghost-button social-count" onClick={forkCurrentModel} disabled={forking} title="Fork this model into your account">
               {forking ? <LoaderCircle className="spinner" size={14} /> : <GitFork size={14} />} Fork
             </button>
+            {social.forkCount > 0 && (
+              <div className="example-picker">
+                <button className="ghost-button social-count" onClick={() => setShowForks((value) => !value)} title="Public forks of this model">
+                  {social.forkCount} fork{social.forkCount === 1 ? "" : "s"} <ChevronDown size={13} />
+                </button>
+                {showForks && (
+                  <div className="example-menu auth-dropdown">
+                    <span className="menu-label">PUBLIC FORKS</span>
+                    {social.forks.map((fork) => (
+                      <a className="auth-menu-link" key={fork.url} href={fork.url}><GitFork size={15} /> {fork.title} <small>by {fork.author}</small></a>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             <span className="social-count-static" title="Downloads"><Download size={14} /> {downloadCount}</span>
           </div>
         </div>
