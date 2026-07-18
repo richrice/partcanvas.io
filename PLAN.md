@@ -48,6 +48,7 @@ Today `lib/models/store.server.ts` stores immutable, content-addressed records (
 | D12 | Rate limiting = in-memory token buckets (per-IP for anonymous compute, per-user for social mutations). Known single-instance limitation, documented | The app currently runs one replica; revisit only if that changes |
 | D13 | Migrations run at boot via `instrumentation.ts` (`migrate()` from drizzle-orm before serving) | Single replica makes boot-time migration safe and removes a deploy step |
 | D14 | During transition, `/m/:id` reads Postgres first and falls back to the legacy filesystem store; the filesystem path is deleted in Phase 5 after production data is imported | Zero-downtime migration without a flag day |
+| D15 | Revision permalinks (`/m/:id`, `GET /api/models/:id`, and revision thumbnails) stay readable even when a private model points at them (adopting P5.3's offered default) | Revision IDs are unguessable content hashes; revisions are shared, ownerless objects (forks may reference them); `/m/:id` permanence is a public contract |
 
 ## 4. Data model
 
@@ -140,7 +141,7 @@ API, session-authenticated, no permissive CORS: `/api/auth/[...all]` (Better Aut
 
 - [x] **P5.1** Rate limiting (D12): `lib/api/rate-limit.server.ts` token buckets; per-IP on `/api/render` + `/api/parameters` + anonymous reads that hit compile, per-user on publish/like/fork; 429 with `retry-after`; limits documented in `/docs/api`.
 - [x] **P5.2** API tokens: schema, `/settings` create/revoke UI (hash stored, plaintext shown once), bearer auth restores programmatic `POST /api/models` (publishes as the token's user; requires an explicit target model or creates one from payload metadata); `/docs/api` updated.
-- [ ] **P5.3** Moderation basics: report button → `reports` table; verify visibility enforcement everywhere (explore, profiles, thumbnails, `GET /api/models/:id` for private-model head revisions — decide and document whether revision permalinks of private models stay readable; default: yes, IDs are unguessable, note it).
+- [x] **P5.3** Moderation basics: report button → `reports` table; verify visibility enforcement everywhere (explore, profiles, thumbnails, `GET /api/models/:id` for private-model head revisions — decide and document whether revision permalinks of private models stay readable; default: yes, IDs are unguessable, note it).
 - [ ] **P5.4** Legacy cleanup: delete filesystem store + fallback (D14), drop `PARTCANVAS_DATA_DIR` from Dockerfile/compose/`.env.example`/health; **[HUMAN]** confirm production import (P1.3) first. Final README + CLAUDE.md sweep.
 
 ### Backlog (explicitly out of scope for this plan)
@@ -185,3 +186,4 @@ Append entries here; do not rewrite old ones.
 | 2026-07-18 | P4.4 | updateModelMetadata (strict enum validation on explicit patch; slug immutable per D7) + deleteModel; PATCH/DELETE /api/app/models/:id owner-only. Tests: 401/403/404, normalization, invalid values, delete keeps shared revision + nulls fork lineage. No management UI yet (task scoped to endpoints; owner UI can ride a later pass). Phase 4 complete. |
 | 2026-07-18 | P5.1 | lib/api/rate-limit.server.ts token buckets (injectable clock, size backstop, reset-for-tests): COMPILE 60 burst/60 per min per-IP on render+parameters; PUBLISH 12/hr per-user on publish+versions; SOCIAL 60 burst on like/fork/username (per-user) + download beacon (per-IP). 429 + retry-after; /docs/api Rate limits section. Unit tests + render-route 429 test. |
 | 2026-07-18 | P5.2 | api_tokens schema (migration 0003) + lib/auth/tokens.server.ts (pc_ prefix, sha256 hash only, last_used_at); /api/app/tokens GET/POST + /:id DELETE; /settings token section (plaintext shown once w/ copy, revoke); POST /api/models restored for bearer auth — no modelId creates an owned model, modelId publishes a version (owner-only, 409 identical head). /docs/api updated. Tests: token lifecycle w/o plaintext storage, bearer create+version+foreign-403, invalid-token 401. |
+| 2026-07-18 | P5.3 | reports table (migration 0004) + POST /api/models/:id/report (anonymous OK, optional reason, per-IP limited, private hidden) + report dropdown in social bar. Visibility audit: explore/profile/model-page/like/fork/download/report all enforce visibility (tested); revision permalinks + thumbnails stay ID-readable — recorded as D15 and documented in /docs/api. No admin UI (backlog). |

@@ -140,6 +140,17 @@ export const modelRevisions = pgTable("model_revisions", {
   primaryKey({ columns: [table.modelId, table.version] }),
 ]);
 
+// Abuse reports (P5.3). reporter_id stays null for anonymous reports;
+// resolved_at is set by an operator (no admin UI yet — SQL for now).
+export const reports = pgTable("reports", {
+  id: text("id").primaryKey(),
+  modelId: text("model_id").notNull().references(() => models.id, { onDelete: "cascade" }),
+  reporterId: text("reporter_id").references(() => user.id, { onDelete: "set null" }),
+  reason: text("reason").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+});
+
 // One positive vote per user per model (D9); like_count is maintained
 // transactionally alongside inserts/deletes here.
 export const likes = pgTable("likes", {

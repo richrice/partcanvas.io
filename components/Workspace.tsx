@@ -11,6 +11,7 @@ import {
   Compass,
   Download,
   FilePlus2,
+  Flag,
   GitFork,
   Github,
   Heart,
@@ -288,6 +289,9 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
   const [forking, setForking] = useState(false);
   const [showForks, setShowForks] = useState(false);
   const [showVersions, setShowVersions] = useState(false);
+  const [showReport, setShowReport] = useState(false);
+  const [reportReason, setReportReason] = useState("");
+  const [reporting, setReporting] = useState(false);
   const [publishMode, setPublishMode] = useState<"update" | "new">(social?.viewerIsOwner ? "update" : "new");
   const forkCurrentModel = async () => {
     if (!social || forking) return;
@@ -306,6 +310,27 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
       setNotice(error instanceof Error ? error.message : "Could not fork model");
       window.setTimeout(() => setNotice(null), 2600);
       setForking(false);
+    }
+  };
+
+  const submitReport = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!social || reporting) return;
+    setReporting(true);
+    try {
+      await fetch(`/api/models/${social.modelId}/report`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ reason: reportReason }),
+      });
+      setShowReport(false);
+      setReportReason("");
+      setNotice("Report sent — thank you");
+    } catch {
+      setNotice("Could not send the report");
+    } finally {
+      setReporting(false);
+      window.setTimeout(() => setNotice(null), 2600);
     }
   };
 
@@ -466,6 +491,27 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
               </div>
             )}
             <span className="social-count-static" title="Downloads"><Download size={14} /> {downloadCount}</span>
+            <div className="example-picker">
+              <button className="ghost-button social-count" onClick={() => setShowReport((value) => !value)} title="Report this model">
+                <Flag size={14} />
+              </button>
+              {showReport && (
+                <form className="example-menu auth-dropdown report-menu" onSubmit={submitReport}>
+                  <span className="menu-label">REPORT THIS MODEL</span>
+                  <textarea
+                    aria-label="Report reason"
+                    rows={3}
+                    maxLength={1000}
+                    placeholder="What's wrong? (optional)"
+                    value={reportReason}
+                    onChange={(event) => setReportReason(event.target.value)}
+                  />
+                  <button className="primary-button" type="submit" disabled={reporting}>
+                    {reporting ? <LoaderCircle className="spinner" size={14} /> : <Flag size={14} />} Send report
+                  </button>
+                </form>
+              )}
+            </div>
           </div>
         </div>
       )}
