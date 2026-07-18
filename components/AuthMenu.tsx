@@ -61,7 +61,7 @@ export function AuthMenu() {
           // eslint-disable-next-line @next/next/no-img-element -- tiny avatar from the OAuth provider; next/image adds nothing here
           ? <img className="auth-avatar" src={user.image} alt="" width={20} height={20} />
           : <CircleUserRound size={16} />}
-        {user.username ?? user.name}
+        <span className="auth-menu-name">{user.username ?? user.name}</span>
         <ChevronDown size={14} />
       </button>
       {open && (

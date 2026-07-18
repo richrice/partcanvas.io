@@ -339,3 +339,11 @@ input[type="range"]::-webkit-slider-thumb { margin-top: -5px; width: 13px; heigh
 .home-actions .explore-search { flex: 1; min-width: 260px; max-width: 460px; }
 .home-new-button { text-decoration: none; padding: 9px 15px; border-radius: 8px; display: flex; align-items: center; }
 .page-empty a { color: var(--accent); }
+
+/* Mobile: the pre-community topbar rule hides every .ghost-button ≤720px —
+   sign-in/account and gallery actions must stay reachable on phones. */
+@media (max-width: 720px) {
+  .site-header .ghost-button, .auth-menu .ghost-button { display: flex; }
+  .auth-menu-name { max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .site-header .top-actions { gap: 2px; }
+}
