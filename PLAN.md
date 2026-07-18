@@ -91,7 +91,7 @@ API, session-authenticated, no permissive CORS: `/api/auth/[...all]` (Better Aut
   *Done when: install is clean, scripts run, existing tests still pass.*
 - [x] **P0.2** DB plumbing: `drizzle.config.ts`; `lib/db/schema.ts` (start with `revisions` only); `lib/db/client.server.ts` (pg Pool from `DATABASE_URL`, drizzle instance); generated SQL migrations committed under `drizzle/`; `instrumentation.ts` running `migrate()` at boot (skip cleanly when `DATABASE_URL` is unset so `next build` works).
   *Done when: dev server boots and migrates against a local Postgres.*
-- [ ] **P0.3** Test harness: `lib/db/test-db.server.ts` creating a fresh PGlite database with the committed migrations applied; a smoke test inserts and reads back a revision row. Document the pattern in a comment — all later DB tests use this helper.
+- [x] **P0.3** Test harness: `lib/db/test-db.server.ts` creating a fresh PGlite database with the committed migrations applied; a smoke test inserts and reads back a revision row. Document the pattern in a comment — all later DB tests use this helper.
   *Done when: `npm test` passes with no external services running.*
 - [ ] **P0.4** Local dev: add `postgres:17-alpine` service + named volume to `compose.yaml`; `DATABASE_URL` in `.env.example`; README "Development" section updated.
   *Done when: `docker compose up` yields a working local stack.*
@@ -158,3 +158,4 @@ Append entries here; do not rewrite old ones.
 | — | — | Plan created; no implementation yet |
 | 2026-07-18 | P0.1 | Branch created; drizzle-orm/pg (deps) + drizzle-kit/@types/pg/@electric-sql/pglite (dev) installed; `typecheck` + `db:generate` scripts added. `db:generate` runs but needs drizzle.config.ts (P0.2) to do anything. |
 | 2026-07-18 | P0.2 | drizzle.config.ts, lib/db/{schema,client.server,migrate.server}.ts, drizzle/0000_equal_random.sql, instrumentation.ts. Verified: dev boot migrates against Postgres 17 in Docker; `next build` passes with DATABASE_URL unset. |
+| 2026-07-18 | P0.3 | lib/db/test-db.server.ts (PGlite + committed migrations, usage documented) + smoke test roundtripping a revision row. No external services needed. |
