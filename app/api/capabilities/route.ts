@@ -1,6 +1,8 @@
 import { corsPreflight } from "@/lib/api/cors";
 import { PARTCANVAS_API_VERSION, PARTCANVAS_ENGINE } from "@/lib/api/meta";
+import { hasDatabase } from "@/lib/db/client.server";
 
+export const runtime = "nodejs";
 export const OPTIONS = corsPreflight;
 
 export async function GET() {
@@ -28,6 +30,6 @@ export async function GET() {
     importFormats: ["stl", "obj", "svg", "dxf"],
     heightmapFormats: ["text-grid", "png"],
     hostedModels: { create: "POST /api/models", read: "GET /api/models/:id", page: "/m/:id" },
-    service: { readiness: "GET /api/health", persistence: "filesystem-volume" },
+    service: { readiness: "GET /api/health", persistence: hasDatabase() ? "postgres" : "filesystem-volume" },
   });
 }

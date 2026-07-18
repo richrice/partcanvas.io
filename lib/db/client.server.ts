@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import { Pool } from "pg";
@@ -25,6 +26,23 @@ export function hasDatabase(): boolean {
 export function getDb(): Database {
   if (testOverride) return testOverride;
   return getNodeDb();
+}
+
+export interface DatabaseStatus {
+  driver: "postgres";
+  configured: boolean;
+  reachable?: boolean;
+  error?: string;
+}
+
+export async function inspectDatabase(): Promise<DatabaseStatus> {
+  if (!hasDatabase()) return { driver: "postgres", configured: false };
+  try {
+    await getDb().execute(sql`select 1`);
+    return { driver: "postgres", configured: true, reachable: true };
+  } catch (error) {
+    return { driver: "postgres", configured: true, reachable: false, error: error instanceof Error ? error.message : "database-unavailable" };
+  }
 }
 
 export function getNodeDb(): NodePgDatabase<typeof schema> {
