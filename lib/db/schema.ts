@@ -1,9 +1,29 @@
-import { boolean, char, customType, jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core";
-import type { HostedModel } from "../models/types";
+import { sql, type SQL } from "drizzle-orm";
+import {
+  boolean,
+  char,
+  customType,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  uniqueIndex,
+  type AnyPgColumn,
+} from "drizzle-orm/pg-core";
+import type { HostedModel, License, Visibility } from "../models/types";
 
 const bytea = customType<{ data: Uint8Array }>({
   dataType() {
     return "bytea";
+  },
+});
+
+const tsvector = customType<{ data: string }>({
+  dataType() {
+    return "tsvector";
   },
 });
 
@@ -69,3 +89,51 @@ export const verification = pgTable("verification", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// Mutable social objects layered over immutable revisions (§2). Addressed
+// publicly by owner username + slug; `id` is a server-generated opaque string.
+export const models = pgTable("models", {
+  id: text("id").primaryKey(),
+  ownerId: text("owner_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  slug: text("slug").notNull(),
+  title: text("title").notNull(),
+  description: text("description").notNull().default(""),
+  license: text("license").$type<License>().notNull().default("CC-BY-4.0"),
+  visibility: text("visibility").$type<Visibility>().notNull().default("public"),
+  tags: text("tags").array().notNull().default(sql`'{}'::text[]`),
+  headRevisionId: char("head_revision_id", { length: 24 }).notNull().references(() => revisions.id),
+  forkedFromModelId: text("forked_from_model_id").references((): AnyPgColumn => models.id, { onDelete: "set null" }),
+  forkedFromRevisionId: char("forked_from_revision_id", { length: 24 }).references(() => revisions.id),
+  likeCount: integer("like_count").notNull().default(0),
+  downloadCount: integer("download_count").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  // immutable_tags_text is created in the same migration (drizzle does not
+  // manage functions): array_to_string is only STABLE, which Postgres rejects
+  // inside generated columns, so an IMMUTABLE wrapper is required.
+  search: tsvector("search").generatedAlwaysAs((): SQL =>
+    sql`setweight(to_tsvector('english', coalesce(${models.title}, '')), 'A') || setweight(to_tsvector('english', coalesce(${models.description}, '')), 'B') || setweight(to_tsvector('english', immutable_tags_text(${models.tags})), 'C')`),
+}, (table) => [
+  uniqueIndex("models_owner_slug_unique").on(table.ownerId, table.slug),
+  index("models_search_index").using("gin", table.search),
+]);
+
+// Ordered publish history; the head is denormalized on models.head_revision_id.
+export const modelRevisions = pgTable("model_revisions", {
+  modelId: text("model_id").notNull().references(() => models.id, { onDelete: "cascade" }),
+  revisionId: char("revision_id", { length: 24 }).notNull().references(() => revisions.id),
+  version: integer("version").notNull(),
+  publishedAt: timestamp("published_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  primaryKey({ columns: [table.modelId, table.version] }),
+]);
+
+// One positive vote per user per model (D9); like_count is maintained
+// transactionally alongside inserts/deletes here.
+export const likes = pgTable("likes", {
+  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  modelId: text("model_id").notNull().references(() => models.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  primaryKey({ columns: [table.userId, table.modelId] }),
+]);

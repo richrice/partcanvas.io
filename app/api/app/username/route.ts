@@ -2,18 +2,11 @@ import { and, eq, isNull } from "drizzle-orm";
 import { getSessionUser } from "@/lib/auth/session.server";
 import { validateUsername } from "@/lib/auth/username";
 import { getDb } from "@/lib/db/client.server";
+import { isUniqueViolation } from "@/lib/db/errors.server";
 import { user } from "@/lib/db/schema";
 
 // Cookie-authenticated (D5): no corsPreflight export, no permissive CORS.
 export const runtime = "nodejs";
-
-function isUniqueViolation(error: unknown): boolean {
-  for (let current = error; current; current = (current as { cause?: unknown }).cause) {
-    if ((current as { code?: string }).code === "23505") return true;
-    if (current instanceof Error && /duplicate key value/.test(current.message)) return true;
-  }
-  return false;
-}
 
 // Claims the caller's username exactly once. The guarded UPDATE plus the
 // unique index close both races: a double submit and two users choosing the

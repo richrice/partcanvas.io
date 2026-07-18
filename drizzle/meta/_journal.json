@@ -15,6 +15,13 @@
       "when": 1784362619389,
       "tag": "0001_steady_texas_twister",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784363341585,
+      "tag": "0002_faithful_boomer",
+      "breakpoints": true
     }
   ]
 }
