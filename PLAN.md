@@ -126,7 +126,7 @@ API, session-authenticated, no permissive CORS: `/api/auth/[...all]` (Better Aut
 - [x] **P3.3** Profiles: `/u/[username]` public model grid (thumbnail, title, counts); `/settings` to edit display name + bio.
 - [x] **P3.4** Likes: `POST /api/app/models/:id/like` toggles + updates `like_count` in one transaction; optimistic button state; tested for double-like idempotency.
 - [x] **P3.5** Explore: `/explore` with newest / most-liked sorts, tag filter, FTS search (D11); public-visibility only; simple pagination.
-- [ ] **P3.6** Download beacon: exporting from a hosted model page fires `POST /api/app/models/:id/download` (fire-and-forget, works signed-out too — move under `/api/models/:id/download` if cookie-free is simpler; no dedup in v1).
+- [x] **P3.6** Download beacon: exporting from a hosted model page fires `POST /api/app/models/:id/download` (fire-and-forget, works signed-out too — move under `/api/models/:id/download` if cookie-free is simpler; no dedup in v1).
 - [ ] **P3.7** Navigation: header links (Explore, profile), `/m/:id` pages link back to a model page when the revision is some public model's head; README feature overview updated.
 
 ### Phase 4 — Fork & versions
@@ -177,3 +177,4 @@ Append entries here; do not rewrite old ones.
 | 2026-07-18 | P3.3 | /u/:username profile (SiteHeader + ModelCard grid w/ thumbnail fallback, bio, owner sees own private/unlisted w/ badges + Edit profile link); /settings edits display name + bio via authClient.updateUser. Owner queries now return bio. Test: update-user endpoint round-trip w/ signed cookie (name+bio update, username untouched). E2E: profile 200 public-only for anonymous, ghost 404. |
 | 2026-07-18 | P3.4 | lib/models/likes.server.ts toggleLike (insert-or-delete + like_count in one tx, PK forbids double rows) + hasLiked; POST /api/app/models/:id/like (401/404-private/toggle). Social bar like button now live with optimistic state + rollback; model page passes viewerLiked. Tests: idempotent cycle, count consistency, endpoint toggle, auth/visibility. |
 | 2026-07-18 | P3.5 | exploreModels store query (public-only, websearch FTS, arrayContains tag filter, newest/liked sorts, fetch-plus-one pagination) + /explore page (search form, sort tabs, tag chip, prev/next). ModelCard gains author line. 4 store tests; E2E: listing/search/sort verified, unlisted+private excluded. |
+| 2026-07-18 | P3.6 | Took the offered cookie-free option: POST /api/models/:id/download (public CORS surface; model-id addressed; owner cookie still honored for private models). recordDownload helper; Workspace export fires keepalive beacon + bumps visible count on model pages. Tests: anonymous increment, 404 unknown/private-anon, owner counts. |

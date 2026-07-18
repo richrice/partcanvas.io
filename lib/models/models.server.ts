@@ -100,6 +100,15 @@ export async function getModelByOwnerSlug(username: string, slug: string, db: Da
   return row ?? null;
 }
 
+// Fire-and-forget download counter (P3.6) — no dedup in v1.
+export async function recordDownload(modelId: string, db: Database = getDb()): Promise<number | null> {
+  const [row] = await db.update(models)
+    .set({ downloadCount: sql`${models.downloadCount} + 1` })
+    .where(eq(models.id, modelId))
+    .returning({ downloadCount: models.downloadCount });
+  return row?.downloadCount ?? null;
+}
+
 export type ExploreSort = "newest" | "liked";
 
 export interface ExploreOptions {

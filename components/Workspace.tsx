@@ -97,6 +97,7 @@ export function Workspace({ initialModel, social }: { initialModel?: InitialWork
   const [publishError, setPublishError] = useState<string | null>(null);
   const [liked, setLiked] = useState(social?.viewerLiked ?? false);
   const [likeCount, setLikeCount] = useState(social?.likeCount ?? 0);
+  const [downloadCount, setDownloadCount] = useState(social?.downloadCount ?? 0);
   const { data: authSession } = authClient.useSession();
   const router = useRouter();
   const [cursorLocation, setCursorLocation] = useState<CursorLocation>({ line: 1, column: 1 });
@@ -180,6 +181,11 @@ export function Workspace({ initialModel, social }: { initialModel?: InitialWork
 
   const downloadModel = () => {
     if (!result?.geometry) return;
+    // Fire-and-forget download beacon for hosted model pages (P3.6).
+    if (social) {
+      setDownloadCount((count) => count + 1);
+      void fetch(`/api/models/${social.modelId}/download`, { method: "POST", keepalive: true }).catch(() => undefined);
+    }
     const serialized = serializeGeometry(effectiveExportFormat === "3mf" ? result.parts : result.geometry, effectiveExportFormat, modelName || "partcanvas-model");
     const data = serialized.data;
     const blob = new Blob([data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer], { type: serialized.mimeType });
@@ -355,7 +361,7 @@ export function Workspace({ initialModel, social }: { initialModel?: InitialWork
               <Heart size={14} fill={liked ? "currentColor" : "none"} /> {likeCount}
             </button>
             <button className="ghost-button social-count" disabled title="Forking coming soon"><GitFork size={14} /> Fork</button>
-            <span className="social-count-static" title="Downloads"><Download size={14} /> {social.downloadCount}</span>
+            <span className="social-count-static" title="Downloads"><Download size={14} /> {downloadCount}</span>
           </div>
         </div>
       )}
