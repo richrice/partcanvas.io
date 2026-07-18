@@ -116,6 +116,26 @@ export async function getModelByOwnerSlug(username: string, slug: string, db: Da
   return row ?? null;
 }
 
+// Publishing an update (§2): insert the next history row and move the head
+// pointer atomically. Callers pass an already-saved revision id.
+export async function publishModelVersion(modelId: string, revisionId: string, db: Database = getDb()): Promise<{ version: number }> {
+  return db.transaction(async (tx) => {
+    const [current] = await tx.select({ max: sql<number>`coalesce(max(${modelRevisions.version}), 0)` })
+      .from(modelRevisions).where(eq(modelRevisions.modelId, modelId));
+    const version = Number(current.max) + 1;
+    await tx.insert(modelRevisions).values({ modelId, revisionId, version });
+    await tx.update(models).set({ headRevisionId: revisionId, updatedAt: sql`now()` }).where(eq(models.id, modelId));
+    return { version };
+  });
+}
+
+export async function listModelVersions(modelId: string, db: Database = getDb()): Promise<{ version: number; revisionId: string; publishedAt: Date }[]> {
+  return db.select({ version: modelRevisions.version, revisionId: modelRevisions.revisionId, publishedAt: modelRevisions.publishedAt })
+    .from(modelRevisions)
+    .where(eq(modelRevisions.modelId, modelId))
+    .orderBy(desc(modelRevisions.version));
+}
+
 export interface ForkLink {
   title: string;
   slug: string;

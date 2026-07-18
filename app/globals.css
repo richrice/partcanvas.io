@@ -316,3 +316,6 @@ input[type="range"]::-webkit-slider-thumb { margin-top: -5px; width: 13px; heigh
 .social-lineage { font-size: 12px; }
 .auth-menu-link small { color: #8d968d; margin-left: auto; }
 @media (max-width: 1100px) { .social-lineage { display: none; } }
+.publish-mode { display: flex; flex-direction: column; gap: 7px; padding: 10px 12px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; }
+.publish-mode label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.publish-mode input { accent-color: var(--accent); }

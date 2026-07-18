@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { Workspace } from "@/components/Workspace";
 import { getPageSessionUser } from "@/lib/auth/session.server";
 import { hasLiked } from "@/lib/models/likes.server";
-import { getForkLineage, getModelByOwnerSlug } from "@/lib/models/models.server";
+import { getForkLineage, getModelByOwnerSlug, listModelVersions } from "@/lib/models/models.server";
 import { readRevision } from "@/lib/models/revisions.server";
 import { canViewModel } from "@/lib/models/visibility";
 
@@ -40,6 +40,7 @@ export default async function ModelPage({ params }: ModelPageProps) {
   if (!revision) notFound();
   const viewerLiked = found.viewer ? await hasLiked(found.model.id, found.viewer.id) : false;
   const lineage = await getForkLineage(found.model);
+  const versions = await listModelVersions(found.model.id);
   const forkLink = (fork: { title: string; slug: string; ownerUsername: string | null }) => ({
     title: fork.title,
     author: fork.ownerUsername ?? "",
@@ -68,6 +69,8 @@ export default async function ModelPage({ params }: ModelPageProps) {
         forkedFrom: lineage.forkedFrom ? forkLink(lineage.forkedFrom) : undefined,
         forkCount: lineage.forkCount,
         forks: lineage.forks.map(forkLink),
+        viewerIsOwner: found.viewer?.id === found.model.ownerId,
+        versions: versions.map((entry) => ({ version: entry.version, revisionId: entry.revisionId, publishedAt: entry.publishedAt.toISOString() })),
       }}
     />
   );

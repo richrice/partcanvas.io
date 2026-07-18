@@ -133,7 +133,7 @@ API, session-authenticated, no permissive CORS: `/api/auth/[...all]` (Better Aut
 
 - [x] **P4.1** Fork: `POST /api/app/models/:id/fork` creates a model owned by the caller pointing at the source head revision, `forked_from_*` set, slug deduped; fork button navigates to the new model in the editor.
 - [x] **P4.2** Lineage: model page shows "forked from *title* by *author*" (link) and a fork count; forks list on the model page or profile.
-- [ ] **P4.3** Updates: publishing from a model you own offers "Update" (new revision, version++, head moves) vs. "Publish as new"; version history list on the model page linking each version's `/m/:id` permalink.
+- [x] **P4.3** Updates: publishing from a model you own offers "Update" (new revision, version++, head moves) vs. "Publish as new"; version history list on the model page linking each version's `/m/:id` permalink.
 - [ ] **P4.4** Manage: `PATCH /api/app/models/:id` (title, description, tags, license, visibility) and `DELETE` (removes model + history rows; revisions remain — they're content-addressed and may be shared with forks). Owner-only, tested.
 
 ### Phase 5 — Hardening, tokens, cleanup
@@ -181,3 +181,4 @@ Append entries here; do not rewrite old ones.
 | 2026-07-18 | P3.7 | Explore links in Workspace topbar + SiteHeader; AuthMenu dropdown gains Your profile / Explore / Settings. /m/:id shows a "permanent revision snapshot of X by Y" bar linking to the model page (findPublicModelByHeadRevision, oldest public model wins; tested). README feature overview gains the community-layer paragraph. E2E verified. Phase 3 complete. |
 | 2026-07-18 | P4.1 | forkModel store helper (same head revision, metadata carried, forked_from_* set) + POST /api/app/models/:id/fork (401/409-no-username/404-private/201). Social-bar Fork button live: forks then navigates to the new model page. Tests incl. per-owner slug dedup on re-fork. |
 | 2026-07-18 | P4.2 | getForkLineage (forked-from link hidden if source went private; public-only fork count + most-liked-first fork list). Model page social bar shows "forked from X by Y" and a fork-count dropdown listing public forks. Store tests both directions + private-fork exclusion. |
+| 2026-07-18 | P4.3 | publishModelVersion (version++ + head move in one tx) + listModelVersions; POST /api/app/models/:id/versions (owner-only, 409 when identical to head, thumbnail supported). Owner publish dialog offers Update-vs-new radio; social bar gains version-history dropdown linking each /m/:id permalink. 4 route tests + gates. |

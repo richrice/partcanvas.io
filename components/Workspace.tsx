@@ -14,6 +14,7 @@ import {
   GitFork,
   Github,
   Heart,
+  History,
   LoaderCircle,
   Maximize2,
   Menu,
@@ -66,6 +67,8 @@ export interface SocialChromeModel {
   forkedFrom?: { title: string; author: string; url: string };
   forkCount: number;
   forks: { title: string; author: string; url: string }[];
+  viewerIsOwner: boolean;
+  versions: { version: number; revisionId: string; publishedAt: string }[];
 }
 
 // Revision permalinks (/m/:id) link back to the community model page whose
@@ -239,19 +242,36 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
     setPublishing(true);
     setPublishError(null);
     try {
+      const draft = {
+        name: modelName,
+        source,
+        files: projectFiles,
+        parameters,
+        thumbnail: thumbnailCaptureRef.current?.() ?? undefined,
+      };
+      if (social?.viewerIsOwner && publishMode === "update") {
+        const response = await fetch(`/api/app/models/${social.modelId}/versions`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(draft),
+        });
+        const payload = await response.json() as { version?: number; error?: string };
+        if (!response.ok || !payload.version) throw new Error(payload.error || "Could not publish the update");
+        setShowPublishDialog(false);
+        setNotice(`Version ${payload.version} published`);
+        window.setTimeout(() => setNotice(null), 2600);
+        router.refresh();
+        return;
+      }
       const response = await fetch("/api/app/models", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          name: modelName,
-          source,
-          files: projectFiles,
-          parameters,
+          ...draft,
           description: publishDescription,
           license: publishLicense,
           visibility: publishVisibility,
           tags: publishTags.split(",").map((tag) => tag.trim()).filter(Boolean),
-          thumbnail: thumbnailCaptureRef.current?.() ?? undefined,
         }),
       });
       const payload = await response.json() as { url?: string; error?: string };
@@ -267,6 +287,8 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
 
   const [forking, setForking] = useState(false);
   const [showForks, setShowForks] = useState(false);
+  const [showVersions, setShowVersions] = useState(false);
+  const [publishMode, setPublishMode] = useState<"update" | "new">(social?.viewerIsOwner ? "update" : "new");
   const forkCurrentModel = async () => {
     if (!social || forking) return;
     if (!authSession?.user) {
@@ -411,6 +433,23 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
             <button className="ghost-button social-count" onClick={forkCurrentModel} disabled={forking} title="Fork this model into your account">
               {forking ? <LoaderCircle className="spinner" size={14} /> : <GitFork size={14} />} Fork
             </button>
+            {social.versions.length > 0 && (
+              <div className="example-picker">
+                <button className="ghost-button social-count" onClick={() => setShowVersions((value) => !value)} title="Version history">
+                  <History size={14} /> v{social.versions[0].version} <ChevronDown size={13} />
+                </button>
+                {showVersions && (
+                  <div className="example-menu auth-dropdown">
+                    <span className="menu-label">VERSION HISTORY</span>
+                    {social.versions.map((entry) => (
+                      <a className="auth-menu-link" key={entry.version} href={`/m/${entry.revisionId}`}>
+                        <History size={15} /> v{entry.version} <small>{new Date(entry.publishedAt).toLocaleDateString()}</small>
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             {social.forkCount > 0 && (
               <div className="example-picker">
                 <button className="ghost-button social-count" onClick={() => setShowForks((value) => !value)} title="Public forks of this model">
@@ -559,11 +598,24 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
       {showPublishDialog && (
         <div className="modal-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowPublishDialog(false); }}>
           <form className="welcome-card publish-dialog" onSubmit={publishOwnedModel}>
-            <h1>Publish model</h1>
+            <h1>{social?.viewerIsOwner && publishMode === "update" ? "Publish update" : "Publish model"}</h1>
+            {social?.viewerIsOwner && (
+              <div className="publish-mode" role="radiogroup" aria-label="Publish mode">
+                <label>
+                  <input type="radio" name="publish-mode" checked={publishMode === "update"} onChange={() => setPublishMode("update")} />
+                  Update “{social.title}” (v{(social.versions[0]?.version ?? 1) + 1})
+                </label>
+                <label>
+                  <input type="radio" name="publish-mode" checked={publishMode === "new"} onChange={() => setPublishMode("new")} />
+                  Publish as a new model
+                </label>
+              </div>
+            )}
             <label className="publish-field">
               <span>Title</span>
               <input aria-label="Model title" maxLength={80} value={modelName} onChange={(event) => setModelName(event.target.value)} required />
             </label>
+            {(!social?.viewerIsOwner || publishMode === "new") && (<>
             <label className="publish-field">
               <span>Description</span>
               <textarea aria-label="Model description" maxLength={1000} rows={3} value={publishDescription} onChange={(event) => setPublishDescription(event.target.value)} placeholder="What does it print, and how is it customized?" />
@@ -586,6 +638,7 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
               <span>Tags <small>(comma separated, up to 12)</small></span>
               <input aria-label="Tags" value={publishTags} onChange={(event) => setPublishTags(event.target.value)} placeholder="gears, robotics" />
             </label>
+            </>)}
             {publishError && <span className="welcome-problem"><TriangleAlert size={13} /> {publishError}</span>}
             <div className="publish-row">
               <button type="button" className="ghost-button" onClick={() => setShowPublishDialog(false)}>Cancel</button>
