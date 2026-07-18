@@ -100,6 +100,19 @@ export async function getModelByOwnerSlug(username: string, slug: string, db: Da
   return row ?? null;
 }
 
+// Revision permalinks link back to the community page when the revision is
+// the head of some public model (P3.7). Oldest model wins for determinism
+// when forks share a head revision.
+export async function findPublicModelByHeadRevision(revisionId: string, db: Database = getDb()): Promise<{ title: string; slug: string; ownerUsername: string | null } | null> {
+  const [row] = await db.select({ title: models.title, slug: models.slug, ownerUsername: user.username })
+    .from(models)
+    .innerJoin(user, eq(models.ownerId, user.id))
+    .where(and(eq(models.headRevisionId, revisionId), eq(models.visibility, "public")))
+    .orderBy(models.createdAt)
+    .limit(1);
+  return row ?? null;
+}
+
 // Fire-and-forget download counter (P3.6) — no dedup in v1.
 export async function recordDownload(modelId: string, db: Database = getDb()): Promise<number | null> {
   const [row] = await db.update(models)

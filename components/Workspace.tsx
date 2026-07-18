@@ -8,6 +8,7 @@ import {
   CirclePlay,
   CloudUpload,
   Code2,
+  Compass,
   Download,
   FilePlus2,
   GitFork,
@@ -64,7 +65,15 @@ export interface SocialChromeModel {
   viewerLiked: boolean;
 }
 
-export function Workspace({ initialModel, social }: { initialModel?: InitialWorkspaceModel; social?: SocialChromeModel }) {
+// Revision permalinks (/m/:id) link back to the community model page whose
+// head this revision is (P3.7).
+export interface RevisionOfModel {
+  title: string;
+  author: string;
+  url: string;
+}
+
+export function Workspace({ initialModel, social, revisionOf }: { initialModel?: InitialWorkspaceModel; social?: SocialChromeModel; revisionOf?: RevisionOfModel }) {
   const [source, setSource] = useState(initialModel?.source ?? DEFAULT_SOURCE);
   const [projectFiles, setProjectFiles] = useState<Record<string, string>>(initialModel?.files ?? {});
   const [modelName, setModelName] = useState(initialModel?.name ?? "Phone stand");
@@ -335,6 +344,7 @@ export function Workspace({ initialModel, social }: { initialModel?: InitialWork
               </div>
             )}
           </div>
+          <a className="ghost-button explore-link" href="/explore"><Compass size={15} /> Explore</a>
           <a className="ghost-button docs-button api-link" href="/docs/api"><Code2 size={15} /> API</a>
           <a className="icon-button github-link" href="https://github.com/richrice/partcanvas.io" target="_blank" rel="noreferrer" aria-label="partcanvas.io source code on GitHub"><Github size={17} /></a>
           <button className="ghost-button share-button" onClick={shareModel}><Share2 size={15} /> Share</button>
@@ -347,6 +357,16 @@ export function Workspace({ initialModel, social }: { initialModel?: InitialWork
         </nav>
       </header>
 
+      {revisionOf && !social && (
+        <div className="social-bar revision-bar">
+          <div className="social-main">
+            <span className="social-author">Permanent revision snapshot of <a href={revisionOf.url}>{revisionOf.title}</a> by <a href={`/u/${revisionOf.author}`}>{revisionOf.author}</a></span>
+          </div>
+          <div className="social-actions">
+            <a className="ghost-button" href={revisionOf.url}>View model page →</a>
+          </div>
+        </div>
+      )}
       {social && (
         <div className="social-bar">
           <div className="social-main">

@@ -16,6 +16,7 @@ export function SiteHeader() {
         <span className="beta-badge">ALPHA</span>
       </div>
       <nav className="top-actions">
+        <Link className="ghost-button" href="/explore">Explore</Link>
         <AuthMenu />
       </nav>
     </header>

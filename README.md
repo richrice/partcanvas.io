@@ -11,6 +11,8 @@ The product is designed around two people:
 - Authors script parametric, printable 3D models.
 - Makers adjust a friendly parameter panel and download STL, STEP, and other fabrication formats without editing code.
 
+A community layer connects them: sign in with GitHub or Google, publish models to a public profile at `/u/username`, browse and search everything on [`/explore`](https://partcanvas.io/explore), and like or download other people's designs. Every published version keeps a permanent revision permalink at `/m/:id`, and each model page carries its license, tags, and counts.
+
 The same engine runs in the browser and behind an HTTP render API.
 
 ## Development

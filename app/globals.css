@@ -308,3 +308,8 @@ input[type="range"]::-webkit-slider-thumb { margin-top: -5px; width: 13px; heigh
 .explore-tag-filter { color: var(--accent) !important; }
 .explore-pagination { display: flex; justify-content: space-between; margin-top: 26px; }
 .model-card-author { color: #8d968d; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.auth-menu-link { width: 100%; display: flex; gap: 10px; align-items: center; padding: 9px; color: var(--text); text-decoration: none; border-radius: 7px; box-sizing: border-box; }
+.auth-menu-link:hover { background: #252a25; }
+.revision-bar .social-author a { color: var(--accent); text-decoration: none; }
+.revision-bar .social-author a:hover { text-decoration: underline; }
+@media (max-width: 760px) { .explore-link { display: none; } }

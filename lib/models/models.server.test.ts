@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { modelRevisions, user } from "../db/schema";
 import { createTestDatabase } from "../db/test-db.server";
-import { createModel, getModelByOwnerSlug, listModelsByOwner, readModel, slugify } from "./models.server";
+import { createModel, findPublicModelByHeadRevision, getModelByOwnerSlug, listModelsByOwner, readModel, slugify } from "./models.server";
 import { saveRevision } from "./revisions.server";
 
 let testDb: Awaited<ReturnType<typeof createTestDatabase>>;
@@ -88,6 +88,14 @@ describe("model store", () => {
     const ownerView = await listModelsByOwner("owner-one", { viewerId: "owner-1" }, testDb.db);
     expect(ownerView!.models.length).toBeGreaterThan(publicView!.models.length);
     expect(await listModelsByOwner("ghost", {}, testDb.db)).toBeNull();
+  });
+
+  it("maps a head revision back to the oldest public model", async () => {
+    const found = await findPublicModelByHeadRevision(revisionId, testDb.db);
+    // Oldest model with this head: the very first "Phone Stand" (public).
+    expect(found).toEqual({ title: "Phone Stand", slug: "phone-stand", ownerUsername: "owner-one" });
+    const saved = await saveRevision({ name: "Unreferenced", source: "cube([7, 7, 7]);" }, testDb.db);
+    expect(await findPublicModelByHeadRevision(saved.record.id, testDb.db)).toBeNull();
   });
 
   it("records fork lineage and searches via the generated tsvector", async () => {
