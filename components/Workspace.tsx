@@ -10,7 +10,9 @@ import {
   Code2,
   Download,
   FilePlus2,
+  GitFork,
   Github,
+  Heart,
   LoaderCircle,
   Maximize2,
   Menu,
@@ -47,7 +49,21 @@ export interface InitialWorkspaceModel {
   hostedId?: string;
 }
 
-export function Workspace({ initialModel }: { initialModel?: InitialWorkspaceModel }) {
+// Social chrome shown on /u/:username/:slug model pages (P3.2). Like/fork
+// interactivity arrives with P3.4/P4.1.
+export interface SocialChromeModel {
+  modelId: string;
+  title: string;
+  description: string;
+  license: License;
+  authorUsername: string;
+  authorName: string;
+  likeCount: number;
+  downloadCount: number;
+  tags: string[];
+}
+
+export function Workspace({ initialModel, social }: { initialModel?: InitialWorkspaceModel; social?: SocialChromeModel }) {
   const [source, setSource] = useState(initialModel?.source ?? DEFAULT_SOURCE);
   const [projectFiles, setProjectFiles] = useState<Record<string, string>>(initialModel?.files ?? {});
   const [modelName, setModelName] = useState(initialModel?.name ?? "Phone stand");
@@ -298,6 +314,23 @@ export function Workspace({ initialModel }: { initialModel?: InitialWorkspaceMod
           <button className="icon-button"><MoreHorizontal size={18} /></button>
         </nav>
       </header>
+
+      {social && (
+        <div className="social-bar">
+          <div className="social-main">
+            <strong className="social-title">{social.title}</strong>
+            <span className="social-author">by <a href={`/u/${social.authorUsername}`}>{social.authorUsername}</a></span>
+            {social.description ? <span className="social-description" title={social.description}>{social.description}</span> : null}
+          </div>
+          <div className="social-actions">
+            {social.tags.slice(0, 4).map((tag) => <span className="social-tag" key={tag}>{tag}</span>)}
+            <span className="license-badge" title="License">{social.license}</span>
+            <button className="ghost-button social-count" disabled title="Likes coming soon"><Heart size={14} /> {social.likeCount}</button>
+            <button className="ghost-button social-count" disabled title="Forking coming soon"><GitFork size={14} /> Fork</button>
+            <span className="social-count-static" title="Downloads"><Download size={14} /> {social.downloadCount}</span>
+          </div>
+        </div>
+      )}
 
       <div className="mobile-tabs">
         {(["code", "preview", "parameters"] as const).map((panel) => (
