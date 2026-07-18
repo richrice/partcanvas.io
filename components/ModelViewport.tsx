@@ -92,6 +92,14 @@ function fitView(current: ViewportState) {
   current.camera.near = Math.max(radius / 1000, 0.05);
   current.camera.far = radius * 40;
   current.camera.updateProjectionMatrix();
+  // The default fog and zoom limits suit desk-sized parts; scale them up for
+  // large models (e.g. automotive trim) so the fitted view isn't fogged out.
+  const fog = current.scene.fog as THREE.Fog | null;
+  if (fog) {
+    fog.near = Math.max(180, radius * 1.8);
+    fog.far = Math.max(520, radius * 6);
+  }
+  current.controls.maxDistance = Math.max(800, radius * 8);
   current.controls.update();
   current.hasFitModel = true;
 }
