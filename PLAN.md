@@ -96,7 +96,7 @@ API, session-authenticated, no permissive CORS: `/api/auth/[...all]` (Better Aut
   *Done when: `npm test` passes with no external services running.*
 - [x] **P0.4** Local dev: add `postgres:17-alpine` service + named volume to `compose.yaml`; `DATABASE_URL` in `.env.example`; README "Development" section updated.
   *Done when: `docker compose up` yields a working local stack.*
-- [ ] **P0.5 [HUMAN]** Provision Railway Postgres and set `DATABASE_URL` in the Railway environment (the agent may do this via the Railway CLI if authenticated and explicitly approved).
+- [x] **P0.5 [HUMAN]** Provision Railway Postgres and set `DATABASE_URL` in the Railway environment (the agent may do this via the Railway CLI if authenticated and explicitly approved).
 
 ### Phase 1 — Revisions in Postgres
 
@@ -188,3 +188,4 @@ Append entries here; do not rewrite old ones.
 | 2026-07-18 | P5.2 | api_tokens schema (migration 0003) + lib/auth/tokens.server.ts (pc_ prefix, sha256 hash only, last_used_at); /api/app/tokens GET/POST + /:id DELETE; /settings token section (plaintext shown once w/ copy, revoke); POST /api/models restored for bearer auth — no modelId creates an owned model, modelId publishes a version (owner-only, 409 identical head). /docs/api updated. Tests: token lifecycle w/o plaintext storage, bearer create+version+foreign-403, invalid-token 401. |
 | 2026-07-18 | P5.3 | reports table (migration 0004) + POST /api/models/:id/report (anonymous OK, optional reason, per-IP limited, private hidden) + report dropdown in social bar. Visibility audit: explore/profile/model-page/like/fork/download/report all enforce visibility (tested); revision permalinks + thumbnails stay ID-readable — recorded as D15 and documented in /docs/api. No admin UI (backlog). |
 | 2026-07-18 | — | **Session end: all agent-executable tasks P0.1–P5.3 done (154 tests, lint+typecheck+build green; full stack re-verified on compose Postgres w/ migrations 0000–0004). Remaining are [HUMAN]-only: P0.5 provision Railway Postgres + DATABASE_URL; P2.2 create GitHub/Google OAuth apps + env vars (then verify a live OAuth round-trip + browser thumbnail capture); P1.3 run `railway run node scripts/import-models.ts`; P5.4 stays unchecked — blocked until the import is confirmed, then delete store.server.ts/hosted.server.ts fallback + PARTCANVAS_DATA_DIR plumbing.** |
+| 2026-07-18 | P0.5 | Owner approved CLI execution: `Postgres` service (175fa0a1) added to partcanvas.io/production via `railway add --database postgres`; `web` got DATABASE_URL=${{Postgres.DATABASE_URL}} reference + fresh BETTER_AUTH_SECRET + BETTER_AUTH_URL=https://partcanvas.io (--skip-deploys; nothing redeployed yet). |
