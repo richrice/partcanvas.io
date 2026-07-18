@@ -108,7 +108,7 @@ API, session-authenticated, no permissive CORS: `/api/auth/[...all]` (Better Aut
 
 ### Phase 2 — Accounts
 
-- [ ] **P2.1** Better Auth: config in `lib/auth/auth.server.ts` (Drizzle adapter, GitHub + Google, `username`/`bio` additional fields), generated schema merged into `lib/db/schema.ts` + migration, handler at `app/api/auth/[...all]/route.ts`, client in `lib/auth/client.ts`.
+- [x] **P2.1** Better Auth: config in `lib/auth/auth.server.ts` (Drizzle adapter, GitHub + Google, `username`/`bio` additional fields), generated schema merged into `lib/db/schema.ts` + migration, handler at `app/api/auth/[...all]/route.ts`, client in `lib/auth/client.ts`.
   *Done when: local OAuth round-trip works with dev credentials.*
 - [ ] **P2.2 [HUMAN]** Create GitHub and Google OAuth apps (callback `https://partcanvas.io/api/auth/callback/{github,google}` + localhost equivalents); set env vars locally and in Railway.
 - [ ] **P2.3** Session helper `lib/auth/session.server.ts` exporting `getSessionUser(request)` — the single seam all authenticated routes use, so tests can stub it.
@@ -165,3 +165,4 @@ Append entries here; do not rewrite old ones.
 | 2026-07-18 | P1.3 | Script done (standalone pg + Node built-ins so `node scripts/import-models.ts` runs directly; preserves createdAt; ON CONFLICT idempotent; PGlite-tested + CLI-verified against compose Postgres). **[HUMAN] still pending: run against production data, e.g. `railway run node scripts/import-models.ts` (needs P0.5 DATABASE_URL).** |
 | 2026-07-18 | P1.4 | Health reports `database` (inspectDatabase in client.server.ts) + legacy `storage`; readiness = DB reachability when configured, else writable dir. Capabilities `service.persistence` now dynamic; /docs/api health paragraph updated. Tests cover both readiness modes. |
 | 2026-07-18 | P1.5 | README production-deployment section rewritten around Postgres + D14 fallback/import; CLAUDE.md commands (typecheck, db:generate, compose postgres) + storage-layer description + deployment/health semantics updated. Phase 1 complete except the P1.3 [HUMAN] production run. |
+| 2026-07-18 | P2.1 | better-auth@1.6.23; lib/auth/auth.server.ts (lazy createAuth/getAuth, drizzle adapter, GitHub+Google, username input:false + bio additionalFields), auth tables hand-merged into schema (verified against getAuthTables) + migration 0001, catch-all route (no CORS export), lib/auth/client.ts with inferAdditionalFields. Deviation: full OAuth round-trip untestable until P2.2 [HUMAN] credentials — verified instead via PGlite tests (get-session null; sign-in/social builds GitHub authorize URL and persists state) and env placeholders added to .env.example. |

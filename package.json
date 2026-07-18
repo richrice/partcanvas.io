@@ -32,6 +32,7 @@
     "@jscad/svg-deserializer": "^2.5.14",
     "@jscad/svg-serializer": "^2.3.21",
     "@lezer/highlight": "^1.2.3",
+    "better-auth": "^1.6.23",
     "codemirror": "^6.0.2",
     "drizzle-orm": "^0.45.2",
     "earcut": "3.0.2",
