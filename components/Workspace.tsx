@@ -262,6 +262,27 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
     }
   };
 
+  const [forking, setForking] = useState(false);
+  const forkCurrentModel = async () => {
+    if (!social || forking) return;
+    if (!authSession?.user) {
+      setNotice("Sign in to fork models");
+      window.setTimeout(() => setNotice(null), 2200);
+      return;
+    }
+    setForking(true);
+    try {
+      const response = await fetch(`/api/app/models/${social.modelId}/fork`, { method: "POST" });
+      const payload = await response.json() as { url?: string; error?: string };
+      if (!response.ok || !payload.url) throw new Error(payload.error || "Could not fork model");
+      router.push(payload.url);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not fork model");
+      window.setTimeout(() => setNotice(null), 2600);
+      setForking(false);
+    }
+  };
+
   const toggleLike = async () => {
     if (!social) return;
     if (!authSession?.user) {
@@ -380,7 +401,9 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
             <button className={`ghost-button social-count ${liked ? "liked" : ""}`} onClick={toggleLike} title={liked ? "Unlike" : "Like"}>
               <Heart size={14} fill={liked ? "currentColor" : "none"} /> {likeCount}
             </button>
-            <button className="ghost-button social-count" disabled title="Forking coming soon"><GitFork size={14} /> Fork</button>
+            <button className="ghost-button social-count" onClick={forkCurrentModel} disabled={forking} title="Fork this model into your account">
+              {forking ? <LoaderCircle className="spinner" size={14} /> : <GitFork size={14} />} Fork
+            </button>
             <span className="social-count-static" title="Downloads"><Download size={14} /> {downloadCount}</span>
           </div>
         </div>

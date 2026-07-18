@@ -86,6 +86,22 @@ export async function createModel(input: CreateModelInput, db: Database = getDb(
   }
 }
 
+// Forking (§2): a new model owned by the caller pointing at the same head
+// revision — zero bytes copied. Metadata carries over; the per-owner slug
+// dedup in createModel handles forking into a name you already use.
+export async function forkModel(source: ModelRow, ownerId: string, db: Database = getDb()): Promise<ModelRow> {
+  return createModel({
+    ownerId,
+    title: source.title,
+    revisionId: source.headRevisionId,
+    description: source.description,
+    license: source.license,
+    tags: source.tags,
+    forkedFromModelId: source.id,
+    forkedFromRevisionId: source.headRevisionId,
+  }, db);
+}
+
 export async function readModel(id: string, db: Database = getDb()): Promise<ModelRow | null> {
   const [row] = await db.select().from(models).where(eq(models.id, id)).limit(1);
   return row ?? null;
