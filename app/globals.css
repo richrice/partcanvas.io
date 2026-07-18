@@ -232,3 +232,17 @@ input[type="range"]::-webkit-slider-thumb { margin-top: -5px; width: 13px; heigh
   .docs-content { padding: 42px 24px 80px; }
   .docs-grid { grid-template-columns: 1fr; }
 }
+
+/* Auth menu + welcome */
+.auth-menu { position: relative; display: flex; align-items: center; }
+.auth-dropdown { width: 240px; }
+.auth-dropdown .menu-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+.auth-avatar { border-radius: 50%; display: block; }
+.welcome-shell { height: 100dvh; display: flex; align-items: center; justify-content: center; background: var(--bg); }
+.welcome-card { width: min(400px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: 13px; padding: 28px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 20px 50px rgba(0,0,0,.42); }
+.welcome-card h1 { margin: 0; font-size: 19px; letter-spacing: -0.3px; }
+.welcome-card p { margin: 0; color: #b6beb5; line-height: 1.5; }
+.welcome-card input { padding: 10px 12px; font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; outline: none; }
+.welcome-card input:focus { border-color: var(--accent); }
+.welcome-card .primary-button { justify-content: center; padding: 10px 13px; }
+.welcome-problem { display: flex; align-items: center; gap: 6px; color: #eab779; font-size: 12px; }

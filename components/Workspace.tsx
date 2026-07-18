@@ -22,6 +22,7 @@ import {
   Upload,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AuthMenu } from "./AuthMenu";
 import { CodeEditor, type CursorLocation } from "./CodeEditor";
 import { ModelViewport } from "./ModelViewport";
 import { ParameterPanel } from "./ParameterPanel";
@@ -258,6 +259,7 @@ export function Workspace({ initialModel }: { initialModel?: InitialWorkspaceMod
           <button className="primary-button" onClick={downloadModel} disabled={!result?.geometry || compiling}>
             <Download size={16} /> Export {effectiveExportFormat.toUpperCase()}
           </button>
+          <AuthMenu />
           <button className="icon-button"><MoreHorizontal size={18} /></button>
         </nav>
       </header>
