@@ -99,7 +99,7 @@ API, session-authenticated, no permissive CORS: `/api/auth/[...all]` (Better Aut
 
 ### Phase 1 — Revisions in Postgres
 
-- [ ] **P1.1** Revision store `lib/models/revisions.server.ts`: `saveRevision(draft)` reusing the existing validation + canonical-JSON + sha256 logic from `store.server.ts`, insert with `ON CONFLICT DO NOTHING` + read-back (replaces the hard-link trick); `readRevision(id)`. Port/adapt the store's behavior; compile-before-save stays.
+- [x] **P1.1** Revision store `lib/models/revisions.server.ts`: `saveRevision(draft)` reusing the existing validation + canonical-JSON + sha256 logic from `store.server.ts`, insert with `ON CONFLICT DO NOTHING` + read-back (replaces the hard-link trick); `readRevision(id)`. Port/adapt the store's behavior; compile-before-save stays.
   *Done when: unit tests cover dedup, validation errors, and roundtrip against PGlite.*
 - [ ] **P1.2** Serve from Postgres: `POST /api/models`, `GET /api/models/:id`, and `/m/:id` use the revision store, with filesystem fallback on read (D14). Response contracts unchanged (existing `route.test.ts` files keep passing, updated only for setup).
 - [ ] **P1.3** Import script `scripts/import-models.ts` (plain TS; Node 24 runs it directly): reads `$PARTCANVAS_DATA_DIR/*.json`, upserts into `revisions`, idempotent, prints a summary. **[HUMAN]** run it against production data (e.g. `railway run node scripts/import-models.ts`).
@@ -160,3 +160,4 @@ Append entries here; do not rewrite old ones.
 | 2026-07-18 | P0.2 | drizzle.config.ts, lib/db/{schema,client.server,migrate.server}.ts, drizzle/0000_equal_random.sql, instrumentation.ts. Verified: dev boot migrates against Postgres 17 in Docker; `next build` passes with DATABASE_URL unset. |
 | 2026-07-18 | P0.3 | lib/db/test-db.server.ts (PGlite + committed migrations, usage documented) + smoke test roundtripping a revision row. No external services needed. |
 | 2026-07-18 | P0.4 | compose.yaml: postgres:17-alpine + volume + healthcheck + DATABASE_URL; .env.example + README dev section updated. Deviation: also COPY drizzle/ into Docker runner image (boot migrations read it from disk; standalone tracing misses it). Verified `docker compose up --build`: health ready, migrations applied. |
+| 2026-07-18 | P1.1 | lib/models/revisions.server.ts (saveRevision ON CONFLICT DO NOTHING + read-back, readRevision) with validation/hash extracted to shared lib/models/draft.server.ts; store.server.ts refactored onto it unchanged. Stores take optional `db` (driver-agnostic PgDatabase type) so tests inject PGlite. 5 tests: roundtrip, dedup, concurrency, validation, no-solid, bad ids. |
