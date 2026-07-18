@@ -116,6 +116,48 @@ export async function getModelByOwnerSlug(username: string, slug: string, db: Da
   return row ?? null;
 }
 
+export interface ModelMetadataPatch {
+  title?: unknown;
+  description?: unknown;
+  tags?: unknown;
+  license?: unknown;
+  visibility?: unknown;
+}
+
+// Owner-managed metadata (P4.4). Slug stays immutable (D7). Unlike create —
+// where bad metadata falls back to defaults — an explicit patch with an
+// invalid value is an error.
+export async function updateModelMetadata(modelId: string, patch: ModelMetadataPatch, db: Database = getDb()): Promise<ModelRow | null> {
+  const changes: Record<string, unknown> = { updatedAt: sql`now()` };
+  if (patch.title !== undefined) {
+    const title = typeof patch.title === "string" ? patch.title.trim().slice(0, 80) : "";
+    if (!title) throw new Error("Model title is required");
+    changes.title = title;
+  }
+  if (patch.description !== undefined) {
+    changes.description = typeof patch.description === "string" ? patch.description.trim().slice(0, 1_000) : "";
+  }
+  if (patch.tags !== undefined) changes.tags = normalizeTags(patch.tags);
+  if (patch.license !== undefined) {
+    if (!LICENSES.includes(patch.license as License)) throw new Error(`License must be one of: ${LICENSES.join(", ")}`);
+    changes.license = patch.license;
+  }
+  if (patch.visibility !== undefined) {
+    if (!VISIBILITIES.includes(patch.visibility as Visibility)) throw new Error(`Visibility must be one of: ${VISIBILITIES.join(", ")}`);
+    changes.visibility = patch.visibility;
+  }
+  const [row] = await db.update(models).set(changes).where(eq(models.id, modelId)).returning();
+  return row ?? null;
+}
+
+// Deleting a model removes the social object and its history rows (cascade);
+// revisions remain — content-addressed and possibly shared with forks, whose
+// forked_from_model_id goes null (§2, P4.4).
+export async function deleteModel(modelId: string, db: Database = getDb()): Promise<boolean> {
+  const rows = await db.delete(models).where(eq(models.id, modelId)).returning({ id: models.id });
+  return rows.length > 0;
+}
+
 // Publishing an update (§2): insert the next history row and move the head
 // pointer atomically. Callers pass an already-saved revision id.
 export async function publishModelVersion(modelId: string, revisionId: string, db: Database = getDb()): Promise<{ version: number }> {
