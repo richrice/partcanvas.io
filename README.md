@@ -17,10 +17,12 @@ The same engine runs in the browser and behind an HTTP render API.
 
 ```bash
 npm install
+docker compose up -d postgres   # local Postgres 17 for database-backed features
+cp .env.example .env            # provides DATABASE_URL to the dev server
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:3000](http://localhost:3000). Schema migrations apply automatically at boot whenever `DATABASE_URL` is set; without it the app still runs, skipping database-backed features. `npm test` needs no external services — database tests run against an in-memory PGlite instance.
 
 ## Production deployment
 

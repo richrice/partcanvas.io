@@ -93,7 +93,7 @@ API, session-authenticated, no permissive CORS: `/api/auth/[...all]` (Better Aut
   *Done when: dev server boots and migrates against a local Postgres.*
 - [x] **P0.3** Test harness: `lib/db/test-db.server.ts` creating a fresh PGlite database with the committed migrations applied; a smoke test inserts and reads back a revision row. Document the pattern in a comment — all later DB tests use this helper.
   *Done when: `npm test` passes with no external services running.*
-- [ ] **P0.4** Local dev: add `postgres:17-alpine` service + named volume to `compose.yaml`; `DATABASE_URL` in `.env.example`; README "Development" section updated.
+- [x] **P0.4** Local dev: add `postgres:17-alpine` service + named volume to `compose.yaml`; `DATABASE_URL` in `.env.example`; README "Development" section updated.
   *Done when: `docker compose up` yields a working local stack.*
 - [ ] **P0.5 [HUMAN]** Provision Railway Postgres and set `DATABASE_URL` in the Railway environment (the agent may do this via the Railway CLI if authenticated and explicitly approved).
 
@@ -159,3 +159,4 @@ Append entries here; do not rewrite old ones.
 | 2026-07-18 | P0.1 | Branch created; drizzle-orm/pg (deps) + drizzle-kit/@types/pg/@electric-sql/pglite (dev) installed; `typecheck` + `db:generate` scripts added. `db:generate` runs but needs drizzle.config.ts (P0.2) to do anything. |
 | 2026-07-18 | P0.2 | drizzle.config.ts, lib/db/{schema,client.server,migrate.server}.ts, drizzle/0000_equal_random.sql, instrumentation.ts. Verified: dev boot migrates against Postgres 17 in Docker; `next build` passes with DATABASE_URL unset. |
 | 2026-07-18 | P0.3 | lib/db/test-db.server.ts (PGlite + committed migrations, usage documented) + smoke test roundtripping a revision row. No external services needed. |
+| 2026-07-18 | P0.4 | compose.yaml: postgres:17-alpine + volume + healthcheck + DATABASE_URL; .env.example + README dev section updated. Deviation: also COPY drizzle/ into Docker runner image (boot migrations read it from disk; standalone tracing misses it). Verified `docker compose up --build`: health ready, migrations applied. |

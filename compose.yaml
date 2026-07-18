@@ -7,11 +7,35 @@ services:
     environment:
       NODE_ENV: production
       PARTCANVAS_DATA_DIR: /data/models
+      DATABASE_URL: postgres://partcanvas:partcanvas@postgres:5432/partcanvas
     volumes:
       - partcanvas-models:/data/models
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: partcanvas
+      POSTGRES_PASSWORD: partcanvas
+      POSTGRES_DB: partcanvas
+    ports:
+      - "${PARTCANVAS_POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - partcanvas-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U partcanvas -d partcanvas"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
 
 volumes:
   partcanvas-models:
+  partcanvas-postgres:
