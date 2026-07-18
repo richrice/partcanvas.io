@@ -332,3 +332,10 @@ input[type="range"]::-webkit-slider-thumb { margin-top: -5px; width: 13px; heigh
 .report-menu textarea { padding: 8px 10px; font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--line); border-radius: 7px; outline: none; resize: vertical; }
 .report-menu textarea:focus { border-color: var(--accent); }
 .report-menu .primary-button { justify-content: center; }
+
+/* Gallery home */
+.home-tagline { margin: 0 0 16px; max-width: 640px; color: #b6beb5; line-height: 1.55; }
+.home-actions { display: flex; gap: 10px; align-items: stretch; flex-wrap: wrap; }
+.home-actions .explore-search { flex: 1; min-width: 260px; max-width: 460px; }
+.home-new-button { text-decoration: none; padding: 9px 15px; border-radius: 8px; display: flex; align-items: center; }
+.page-empty a { color: var(--accent); }

@@ -6,10 +6,7 @@ services:
       - "${PARTCANVAS_PORT:-3000}:3000"
     environment:
       NODE_ENV: production
-      PARTCANVAS_DATA_DIR: /data/models
       DATABASE_URL: postgres://partcanvas:partcanvas@postgres:5432/partcanvas
-    volumes:
-      - partcanvas-models:/data/models
     depends_on:
       postgres:
         condition: service_healthy
@@ -37,5 +34,4 @@ services:
       - no-new-privileges:true
 
 volumes:
-  partcanvas-models:
   partcanvas-postgres:

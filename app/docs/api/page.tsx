@@ -121,7 +121,7 @@ export default function ApiDocsPage() {
 
           <section id="health" className="docs-section">
             <div className="endpoint-title"><span className="method get">GET</span><code>/api/health</code></div>
-            <p>Readiness probe for deployments and container orchestrators. When a database is configured, a <code>200</code> response means Postgres is reachable and <code>503</code> means it is not; the response reports both the <code>database</code> status and the legacy filesystem <code>storage</code> status during the storage transition. Without a database, readiness falls back to a writable hosted-model store, where the <code>storage.persistent</code> flag is true when <code>PARTCANVAS_DATA_DIR</code> explicitly selects a mounted path.</p>
+            <p>Readiness probe for deployments and container orchestrators. When a database is configured, a <code>200</code> response means Postgres is reachable and <code>503</code> means it is not. An engine-only instance without a database reports ready: rendering and parameter APIs work, hosted models and accounts do not.</p>
           </section>
 
           <section id="errors" className="docs-section">

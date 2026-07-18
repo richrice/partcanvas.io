@@ -30,6 +30,6 @@ export async function GET() {
     importFormats: ["stl", "obj", "svg", "dxf"],
     heightmapFormats: ["text-grid", "png"],
     hostedModels: { create: "POST /api/models", read: "GET /api/models/:id", page: "/m/:id" },
-    service: { readiness: "GET /api/health", persistence: hasDatabase() ? "postgres" : "filesystem-volume" },
+    service: { readiness: "GET /api/health", persistence: hasDatabase() ? "postgres" : "none" },
   });
 }

@@ -11,7 +11,7 @@ The product is designed around two people:
 - Authors script parametric, printable 3D models.
 - Makers adjust a friendly parameter panel and download STL, STEP, and other fabrication formats without editing code.
 
-A community layer connects them: sign in with GitHub or Google, publish models to a public profile at `/u/username`, browse and search everything on [`/explore`](https://partcanvas.io/explore), and like or download other people's designs. Every published version keeps a permanent revision permalink at `/m/:id`, and each model page carries its license, tags, and counts.
+The community library is the front door, ShaderToy-style: the [home page](https://partcanvas.io) is a browsable, searchable gallery of published models, and the editor lives one click away at [`/new`](https://partcanvas.io/new). Sign in with GitHub or Google to publish models to a public profile at `/u/username`, and like, fork, or download other people's designs. Every published version keeps a permanent revision permalink at `/m/:id`, and each model page carries its license, tags, and counts.
 
 The same engine runs in the browser and behind an HTTP render API.
 
@@ -37,7 +37,7 @@ curl http://localhost:3000/api/health
 
 Published models are immutable JSON revisions keyed by a content-derived ID and stored in Postgres (`DATABASE_URL`); concurrent identical publishes resolve to the same stored record. Schema migrations run automatically at server boot, and the readiness endpoint returns `503` while the database is unreachable. Compose keeps Postgres data on the `partcanvas-postgres` named volume; do not use `docker compose down -v` unless deleting the model library is intentional. Set `PARTCANVAS_PORT` in `.env` to change the host port.
 
-The pre-Postgres filesystem store remains as a read fallback during the storage transition: records under `PARTCANVAS_DATA_DIR` (compose volume `partcanvas-models`) keep resolving until they are imported with `node scripts/import-models.ts` (idempotent; needs `DATABASE_URL` and `PARTCANVAS_DATA_DIR`). Deployments without `DATABASE_URL` fall back to filesystem-only storage: set `PARTCANVAS_DATA_DIR` to a durable mounted directory, and readiness then reports whether that directory is writable (`persistent: false` marks the default `.data/models` development path).
+Deployments without `DATABASE_URL` run engine-only: the editor and render/parameter APIs work fully, while hosted models, accounts, and the community features are unavailable.
 
 ## API
 

@@ -1,27 +1,18 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { mkdtemp, rm } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { eq } from "drizzle-orm";
 import { createApiToken } from "@/lib/auth/tokens.server";
 import { setDatabaseForTests } from "@/lib/db/client.server";
-import { revisions, user } from "@/lib/db/schema";
+import { user } from "@/lib/db/schema";
 import { createTestDatabase } from "@/lib/db/test-db.server";
 import { listModelVersions } from "@/lib/models/models.server";
 import { saveRevision } from "@/lib/models/revisions.server";
-import { saveHostedModel } from "@/lib/models/store.server";
 import { POST } from "./route";
 import { GET } from "./[id]/route";
 
-// Reads run Postgres-first (PGlite here) with filesystem fallback (D14);
-// anonymous POST publishing is retired (D6).
-let storageDirectory = "";
-const previousStorage = process.env.PARTCANVAS_DATA_DIR;
+// Revisions live in Postgres (PGlite here); anonymous POST publishing is
+// retired (D6), bearer-token publishing is the programmatic path (P5.2).
 let testDb: Awaited<ReturnType<typeof createTestDatabase>>;
 
 beforeAll(async () => {
-  storageDirectory = await mkdtemp(path.join(os.tmpdir(), "partcanvas-models-"));
-  process.env.PARTCANVAS_DATA_DIR = storageDirectory;
   testDb = await createTestDatabase();
   setDatabaseForTests(testDb.db);
 });
@@ -29,9 +20,6 @@ beforeAll(async () => {
 afterAll(async () => {
   setDatabaseForTests(null);
   await testDb.close();
-  if (previousStorage === undefined) delete process.env.PARTCANVAS_DATA_DIR;
-  else process.env.PARTCANVAS_DATA_DIR = previousStorage;
-  await rm(storageDirectory, { recursive: true, force: true });
 });
 
 function tokenPublish(body: unknown, token?: string) {
@@ -101,14 +89,5 @@ describe("hosted model API", () => {
   it("returns 404 for unknown IDs", async () => {
     const missing = await GET(new Request("http://localhost/api/models/aaaaaaaaaaaaaaaaaaaaaaaa"), { params: Promise.resolve({ id: "aaaaaaaaaaaaaaaaaaaaaaaa" }) });
     expect(missing.status).toBe(404);
-  });
-
-  it("falls back to the legacy filesystem store for records not yet in Postgres", async () => {
-    const { model } = await saveHostedModel({ name: "Legacy record", source: "cube([4, 4, 4]);" });
-    const response = await GET(new Request(`http://localhost/api/models/${model.id}`), { params: Promise.resolve({ id: model.id }) });
-    expect(response.status).toBe(200);
-    expect((await response.json()).model.id).toBe(model.id);
-    const rows = await testDb.db.select({ id: revisions.id }).from(revisions).where(eq(revisions.id, model.id));
-    expect(rows).toHaveLength(0);
   });
 });

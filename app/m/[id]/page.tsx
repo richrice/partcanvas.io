@@ -2,8 +2,12 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Workspace } from "@/components/Workspace";
 import { hasDatabase } from "@/lib/db/client.server";
-import { resolveHostedModel } from "@/lib/models/hosted.server";
 import { findPublicModelByHeadRevision } from "@/lib/models/models.server";
+import { readRevision } from "@/lib/models/revisions.server";
+
+async function resolveHostedModel(id: string) {
+  return hasDatabase() ? readRevision(id) : null;
+}
 
 interface ModelPageProps {
   params: Promise<{ id: string }>;

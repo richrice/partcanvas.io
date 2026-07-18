@@ -68,7 +68,7 @@ export function AuthMenu() {
         <div className="example-menu auth-dropdown">
           <span className="menu-label">{user.email}</span>
           {user.username ? <Link className="auth-menu-link" href={`/u/${user.username}`} onClick={() => setOpen(false)}><User size={16} /> Your profile</Link> : null}
-          <Link className="auth-menu-link" href="/explore" onClick={() => setOpen(false)}><Compass size={16} /> Explore</Link>
+          <Link className="auth-menu-link" href="/" onClick={() => setOpen(false)}><Compass size={16} /> Explore</Link>
           <Link className="auth-menu-link" href="/settings" onClick={() => setOpen(false)}><Settings size={16} /> Settings</Link>
           <button onClick={() => { setOpen(false); void authClient.signOut().then(() => router.refresh()); }}>
             <LogOut size={16} /> Sign out

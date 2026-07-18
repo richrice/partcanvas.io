@@ -19,22 +19,16 @@ WORKDIR /app
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     HOSTNAME=0.0.0.0 \
-    PORT=3000 \
-    PARTCANVAS_DATA_DIR=/data/models
+    PORT=3000
 
 RUN addgroup --system --gid 1001 nodejs \
-    && adduser --system --uid 1001 nextjs \
-    && mkdir -p /data/models \
-    && chown -R nextjs:nodejs /data/models
+    && adduser --system --uid 1001 nextjs
 
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 # SQL migrations are read from disk at boot (instrumentation.ts), so the
 # standalone output tracing does not pick them up.
 COPY --from=builder --chown=nextjs:nodejs /app/drizzle ./drizzle
-# One-shot operational scripts (P1.3 import) run inside this container via
-# `railway ssh -- node scripts/...` — the legacy model volume only exists here.
-COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
 
 USER nextjs
 EXPOSE 3000

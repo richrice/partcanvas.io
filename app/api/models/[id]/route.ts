@@ -1,12 +1,13 @@
 import { CORS_HEADERS, corsPreflight } from "@/lib/api/cors";
-import { resolveHostedModel } from "@/lib/models/hosted.server";
+import { hasDatabase } from "@/lib/db/client.server";
+import { readRevision } from "@/lib/models/revisions.server";
 
 export const runtime = "nodejs";
 export const OPTIONS = corsPreflight;
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
-  const model = await resolveHostedModel(id);
+  const model = hasDatabase() ? await readRevision(id) : null;
   if (!model) return Response.json({ error: "Model not found" }, { status: 404, headers: CORS_HEADERS });
   const etag = `"${model.id}"`;
   const headers = {

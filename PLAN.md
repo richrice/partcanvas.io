@@ -49,6 +49,7 @@ Today `lib/models/store.server.ts` stores immutable, content-addressed records (
 | D13 | Migrations run at boot via `instrumentation.ts` (`migrate()` from drizzle-orm before serving) | Single replica makes boot-time migration safe and removes a deploy step |
 | D14 | During transition, `/m/:id` reads Postgres first and falls back to the legacy filesystem store; the filesystem path is deleted in Phase 5 after production data is imported | Zero-downtime migration without a flag day |
 | D15 | Revision permalinks (`/m/:id`, `GET /api/models/:id`, and revision thumbnails) stay readable even when a private model points at them (adopting P5.3's offered default) | Revision IDs are unguessable content hashes; revisions are shared, ownerless objects (forks may reference them); `/m/:id` permanence is a public contract |
+| D16 | The community gallery is the home page (`/`), ShaderToy-style; the editor moves to `/new`; `/explore` and legacy `/?model=…` share links redirect. Supersedes §5's "`/` editor (unchanged)" | Owner direction (2026-07-18): the repository/community side is the product's core focus, not the blank editor |
 
 ## 4. Data model
 
@@ -65,7 +66,7 @@ Application tables (Drizzle schema in `lib/db/schema.ts`):
 
 ## 5. URL & API map
 
-Pages: `/` editor (unchanged) · `/m/:id` revision permalink → Workspace (unchanged semantics) · `/u/:username` profile · `/u/:username/:slug` model page (Workspace + social chrome: author, like, fork, license, description, counts) · `/explore` browse/search · `/welcome` username picker after first login · `/settings` profile + tokens.
+Pages (as amended by D16): `/` community gallery (browse/search, the front door) · `/new` editor · `/m/:id` revision permalink → Workspace (unchanged semantics) · `/u/:username` profile · `/u/:username/:slug` model page (Workspace + social chrome: author, like, fork, license, description, counts) · `/explore` → redirects to `/` · `/welcome` username picker after first login · `/settings` profile + tokens.
 
 API, public with CORS `*`: `POST /api/render`, `POST /api/parameters`, `GET /api/models/:id`, `GET /api/models/:id/thumbnail`, `GET /api/health`, `GET /api/capabilities`, and (Phase 5) `POST /api/models` with bearer token.
 
@@ -142,7 +143,7 @@ API, session-authenticated, no permissive CORS: `/api/auth/[...all]` (Better Aut
 - [x] **P5.1** Rate limiting (D12): `lib/api/rate-limit.server.ts` token buckets; per-IP on `/api/render` + `/api/parameters` + anonymous reads that hit compile, per-user on publish/like/fork; 429 with `retry-after`; limits documented in `/docs/api`.
 - [x] **P5.2** API tokens: schema, `/settings` create/revoke UI (hash stored, plaintext shown once), bearer auth restores programmatic `POST /api/models` (publishes as the token's user; requires an explicit target model or creates one from payload metadata); `/docs/api` updated.
 - [x] **P5.3** Moderation basics: report button → `reports` table; verify visibility enforcement everywhere (explore, profiles, thumbnails, `GET /api/models/:id` for private-model head revisions — decide and document whether revision permalinks of private models stay readable; default: yes, IDs are unguessable, note it).
-- [ ] **P5.4** Legacy cleanup: delete filesystem store + fallback (D14), drop `PARTCANVAS_DATA_DIR` from Dockerfile/compose/`.env.example`/health; **[HUMAN]** confirm production import (P1.3) first. Final README + CLAUDE.md sweep.
+- [x] **P5.4** Legacy cleanup: delete filesystem store + fallback (D14), drop `PARTCANVAS_DATA_DIR` from Dockerfile/compose/`.env.example`/health; **[HUMAN]** confirm production import (P1.3) first. Final README + CLAUDE.md sweep.
 
 ### Backlog (explicitly out of scope for this plan)
 
@@ -191,3 +192,5 @@ Append entries here; do not rewrite old ones.
 | 2026-07-18 | P0.5 | Owner approved CLI execution: `Postgres` service (175fa0a1) added to partcanvas.io/production via `railway add --database postgres`; `web` got DATABASE_URL=${{Postgres.DATABASE_URL}} reference + fresh BETTER_AUTH_SECRET + BETTER_AUTH_URL=https://partcanvas.io (--skip-deploys; nothing redeployed yet). |
 | 2026-07-18 | P2.2 | Done via owner's signed-in browser (owner clicked GitHub sudo passkey + Google policy checkbox). GitHub OAuth app "partcanvas.io" (callback /api/auth/callback/github, secret via sudo-gated generate). Google: new Cloud project partcanvas-io, consent screen (External) published **In production**, web client "partcanvas.io web" w/ origin + /api/auth/callback/google redirect. All four client vars set on Railway `web` (--skip-deploys). Note: local-dev OAuth needs a 2nd GitHub app + a localhost redirect on the Google client (GitHub allows only one callback per app). |
 | 2026-07-18 | P1.3 | Production run complete (owner approved; SSH key registered for railway ssh). `community-platform` deployed to Railway (SUCCESS; boot applied migrations 0000–0004; health: database reachable). Import in-container: scanned 1, imported 1, re-run idempotent (already present 1) — production had a single hosted model ("Printable name tag", createdAt preserved; volume is otherwise empty). Record verified resolving via API + /m page. |
+| 2026-07-18 | P5.4 | Owner approved post-import: deleted store.server.ts, hosted.server.ts, import script; /m/:id + GET /api/models/:id read revisions directly; health/capabilities/docs are database-only (engine-only instance w/o DATABASE_URL reports ready); PARTCANVAS_DATA_DIR dropped from Dockerfile/compose/.env.example; README+CLAUDE.md swept. Railway `web-volume` left mounted as a cold backup of the pre-import data — safe to delete from Railway later. |
+| 2026-07-18 | D16 | Homepage restructure per owner direction: `/` is now the gallery (search/sorts/tags/pagination + New model CTA), editor at `/new`, `/explore` redirects home, legacy `/?model=…` share links redirect to `/new?model=…`. Nav updated (brand→gallery, SiteHeader "New model", Workspace/AuthMenu Explore→/). |

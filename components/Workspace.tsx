@@ -26,6 +26,7 @@ import {
   TriangleAlert,
   Upload,
 } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AuthMenu } from "./AuthMenu";
@@ -392,10 +393,10 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
       <header className="topbar">
         <div className="brand-block">
           <button className="mobile-menu" aria-label="Open menu"><Menu size={19} /></button>
-          <a className="brand" href="#" aria-label="partcanvas.io home">
+          <Link className="brand" href="/" aria-label="partcanvas.io home">
             <span className="brand-mark"><Box size={18} strokeWidth={2.2} /></span>
             <span>partcanvas<span>.io</span></span>
-          </a>
+          </Link>
           <span className="beta-badge">ALPHA</span>
           <input className="model-name-input" aria-label="Model name" maxLength={80} value={modelName} onChange={(event) => setModelName(event.target.value)} />
         </div>
@@ -416,7 +417,7 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
               </div>
             )}
           </div>
-          <a className="ghost-button explore-link" href="/explore"><Compass size={15} /> Explore</a>
+          <Link className="ghost-button explore-link" href="/"><Compass size={15} /> Explore</Link>
           <a className="ghost-button docs-button api-link" href="/docs/api"><Code2 size={15} /> API</a>
           <a className="icon-button github-link" href="https://github.com/richrice/partcanvas.io" target="_blank" rel="noreferrer" aria-label="partcanvas.io source code on GitHub"><Github size={17} /></a>
           <button className="ghost-button share-button" onClick={shareModel}><Share2 size={15} /> Share</button>
