@@ -11,7 +11,23 @@ export type Database = PgDatabase<PgQueryResultHKT, typeof schema>;
 // Cached on globalThis so dev-server module reloads reuse one pg Pool.
 const globalCache = globalThis as typeof globalThis & { __partcanvasDb?: NodePgDatabase<typeof schema> };
 
-export function getDb(): NodePgDatabase<typeof schema> {
+// Route handlers resolve their database through getDb(), so tests install a
+// PGlite instance here instead of standing up Postgres.
+let testOverride: Database | null = null;
+export function setDatabaseForTests(db: Database | null) {
+  testOverride = db;
+}
+
+export function hasDatabase(): boolean {
+  return testOverride !== null || Boolean(process.env.DATABASE_URL?.trim());
+}
+
+export function getDb(): Database {
+  if (testOverride) return testOverride;
+  return getNodeDb();
+}
+
+export function getNodeDb(): NodePgDatabase<typeof schema> {
   if (!globalCache.__partcanvasDb) {
     const url = process.env.DATABASE_URL;
     if (!url) throw new Error("DATABASE_URL is not set");

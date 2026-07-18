@@ -1,5 +1,5 @@
 import { CORS_HEADERS, corsPreflight } from "@/lib/api/cors";
-import { saveHostedModel } from "@/lib/models/store.server";
+import { publishHostedModel } from "@/lib/models/hosted.server";
 import type { HostedModelDraft } from "@/lib/models/types";
 
 export const runtime = "nodejs";
@@ -9,7 +9,7 @@ export const OPTIONS = corsPreflight;
 export async function POST(request: Request) {
   try {
     const draft = await request.json() as HostedModelDraft;
-    const { model, created } = await saveHostedModel(draft);
+    const { model, created } = await publishHostedModel(draft);
     const url = `/m/${model.id}`;
     return Response.json({ model, url }, {
       status: created ? 201 : 200,
