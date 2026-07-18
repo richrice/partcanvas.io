@@ -73,15 +73,11 @@ button { color: inherit; }
 .toolbar-actions .run-button { color: #9be1d1; padding: 0 9px; }
 .toolbar-actions .active-tool { color: var(--accent); background: var(--accent-dark); }
 
-.code-editor { flex: 1; min-height: 0; position: relative; display: grid; grid-template-columns: 43px 1fr; background: #171a17; overflow: hidden; }
-.line-numbers { padding-top: 13px; overflow: hidden; color: #555d54; background: #151815; border-right: 1px solid #252a25; font: 11px/20px var(--font-mono); text-align: right; user-select: none; }
-.line-numbers span { display: block; padding-right: 11px; height: 20px; }
-.code-editor textarea { resize: none; width: 100%; height: 100%; min-height: 0; padding: 13px 16px 30px 14px; border: 0; outline: 0; tab-size: 2; white-space: pre; overflow: auto; background: transparent; color: #d7ddd6; caret-color: var(--accent); font: 11.5px/20px var(--font-mono); letter-spacing: -.1px; }
-.code-editor textarea { scrollbar-width: thin; scrollbar-color: #444b44 #171a17; }
-.code-editor textarea::-webkit-scrollbar { width: 8px; height: 8px; }
-.code-editor textarea::-webkit-scrollbar-track { background: #171a17; }
-.code-editor textarea::-webkit-scrollbar-thumb { border: 2px solid #171a17; border-radius: 6px; background: #444b44; }
-.code-editor textarea::selection { background: #31554b; }
+.code-editor { flex: 1; min-height: 0; position: relative; background: #171a17; overflow: hidden; }
+.code-editor .cm-scroller { scrollbar-width: thin; scrollbar-color: #444b44 #171a17; }
+.code-editor .cm-scroller::-webkit-scrollbar { width: 8px; height: 8px; }
+.code-editor .cm-scroller::-webkit-scrollbar-track { background: #171a17; }
+.code-editor .cm-scroller::-webkit-scrollbar-thumb { border: 2px solid #171a17; border-radius: 6px; background: #444b44; }
 .editor-statusbar { height: 24px; flex: 0 0 24px; padding: 0 10px; display: flex; align-items: center; gap: 15px; border-top: 1px solid var(--line-soft); color: #737c73; background: #151815; font-size: 9px; }
 .editor-statusbar span { display: flex; gap: 4px; align-items: center; }
 .editor-statusbar span:first-child { color: #7db7aa; margin-right: auto; }

@@ -8,6 +8,7 @@ import { extractParameters, validateParameterOverrides, type ModelParameter, typ
 import { parse } from "./parser";
 import { resolveSourceFiles } from "./files";
 import { serializeBambu3mf } from "./bambu-3mf";
+import { serializeStep } from "./step";
 
 export interface ModelMetrics {
   bounds: { min: [number, number, number]; max: [number, number, number] } | null;
@@ -45,7 +46,7 @@ export interface CompileOptions {
   };
 }
 
-export type ExportFormat = "stl" | "obj" | "3mf" | "svg" | "dxf";
+export type ExportFormat = "stl" | "obj" | "3mf" | "step" | "svg" | "dxf";
 
 export interface SerializedModel {
   data: Uint8Array;
@@ -185,6 +186,9 @@ export function serializeGeometry(input: CadGeometry | CadGeometry[], format: Ex
   if (format === "stl") return { data: geometryToBinaryStl(geometry, name), extension: "stl", mimeType: "model/stl" };
   if (format === "obj") {
     return { data: chunksToBytes(serializeObj({ triangulate: true }, geometry)), extension: "obj", mimeType: "text/plain; charset=utf-8" };
+  }
+  if (format === "step") {
+    return { data: serializeStep(geometry, name), extension: "step", mimeType: "model/step" };
   }
   return {
     data: serializeBambu3mf(items.filter(isGeom3), name),

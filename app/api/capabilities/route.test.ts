@@ -6,6 +6,8 @@ describe("GET /api/capabilities", () => {
     const response = await GET();
     const capabilities = await response.json();
     expect(capabilities.openScadBinary).toBe(false);
+    expect(capabilities.formats).toContain("step");
+    expect(capabilities.step).toMatchObject({ representation: "faceted-brep", units: "millimeter" });
     expect(capabilities.operations).toContain("roof");
     expect(capabilities.threeMf).toMatchObject({ dialect: "BambuStudio", assignment: "per-volume-extruder" });
     expect(capabilities.roofMethods).toEqual({ straight: "native", voronoi: "straight-skeleton-fallback" });

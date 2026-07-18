@@ -58,7 +58,7 @@ export default function ApiDocsPage() {
 
           <section id="render" className="docs-section">
             <div className="endpoint-title"><span className="method">POST</span><code>/api/render</code></div>
-            <p>Compile an OpenSCAD-compatible source string and return STL, OBJ, BambuStudio-ready 3MF, SVG, or DXF geometry. SVG and DXF select top-level 2D geometry; the other formats require a 3D solid. A 3MF preserves separate top-level <code>color()</code> solids as assembled volumes with matching filament and extruder assignments.</p>
+            <p>Compile an OpenSCAD-compatible source string and return STL, OBJ, faceted B-rep STEP, BambuStudio-ready 3MF, SVG, or DXF geometry. SVG and DXF select top-level 2D geometry; the other formats require a 3D solid. STEP preserves the engine&apos;s planar boundary faces in millimeters; it does not reconstruct analytic features. A 3MF preserves separate top-level <code>color()</code> solids as assembled volumes with matching filament and extruder assignments.</p>
             <div className="docs-grid">
               <div>
                 <h3>JSON body</h3>
@@ -69,7 +69,7 @@ export default function ApiDocsPage() {
                   <tr><td><code>parameterFile</code></td><td>string/object</td><td>OpenSCAD Customizer JSON file, equivalent to <code>-p</code>. Use a project-relative filename from <code>files</code>, or provide the parsed JSON object inline.</td></tr>
                   <tr><td><code>parameterSet</code></td><td>string</td><td>Named preset from <code>parameterFile</code>, equivalent to <code>-P</code>. Explicit <code>defines</code>/<code>parameters</code> override preset values.</td></tr>
                   <tr><td><code>files</code></td><td>object</td><td>Project-relative SCAD, STL/OBJ/SVG/DXF, or text/PNG heightmap assets. Send binary files as base64 data URLs.</td></tr>
-                  <tr><td><code>format</code></td><td>string</td><td><code>stl</code> (default), BambuStudio-compatible <code>3mf</code>, <code>obj</code>, <code>svg</code>, or <code>dxf</code>.</td></tr>
+                  <tr><td><code>format</code></td><td>string</td><td><code>stl</code> (default), BambuStudio-compatible <code>3mf</code>, <code>step</code>, <code>obj</code>, <code>svg</code>, or <code>dxf</code>.</td></tr>
                   <tr><td><code>filename</code></td><td>string</td><td>Download filename without extension.</td></tr>
                   <tr><td><code>summary</code></td><td>boolean/string[]</td><td>Return JSON statistics instead of file bytes. Use <code>true</code>/<code>all</code>, or OpenSCAD-compatible categories: <code>cache</code>, <code>time</code>, <code>camera</code>, <code>geometry</code>, <code>bounding-box</code>, and <code>area</code>.</td></tr>
                   <tr><td><code>options.fn</code></td><td>number</td><td>Global facet resolution, 3–256.</td></tr>
