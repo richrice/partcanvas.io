@@ -113,7 +113,7 @@ export default function ApiDocsPage() {
 
           <section id="models" className="docs-section">
             <div className="endpoint-title"><span className="method">POST</span><code>/api/models</code></div>
-            <p>Anonymous publishing is retired: this endpoint now returns <code>401</code>. Publishing requires signing in on <a href="https://partcanvas.io">partcanvas.io</a>, which keeps every published model attached to an owner. Programmatic publishing with per-account bearer API tokens is planned; serverless share links remain the anonymous, no-account way to pass a model around.</p>
+            <p>Programmatic publishing with a bearer API token (create one under <strong>Settings → API tokens</strong> after signing in). Send <code>Authorization: Bearer pc_…</code> plus the model payload: <code>name</code>, <code>source</code>, and optional <code>description</code>, <code>files</code>, <code>parameters</code>, <code>tags</code>, <code>license</code>, and <code>visibility</code>. Without a <code>modelId</code> the request creates a new model owned by the token&apos;s account and returns its <code>/u/username/slug</code> URL; with <code>modelId</code> it publishes a new version of that model (owner-only) and moves the head. Requests without a valid token return <code>401</code> — anonymous publishing is retired, and serverless share links remain the no-account way to pass a model around.</p>
             <div className="endpoint-title secondary-endpoint"><span className="method get">GET</span><code>/api/models/:id</code></div>
             <p>Retrieve the source project, default customizer values, inferred parameter schema, and verified geometry metrics for a hosted model.</p>
           </section>

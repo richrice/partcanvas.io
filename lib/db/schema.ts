@@ -90,6 +90,18 @@ export const verification = pgTable("verification", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// Bearer API tokens for programmatic publishing (D6, P5.2). Only the sha256
+// hash is stored; the plaintext is shown once at creation. `prefix` is the
+// display handle in the settings UI.
+export const apiTokens = pgTable("api_tokens", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull().unique(),
+  prefix: text("prefix").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+});
+
 // Mutable social objects layered over immutable revisions (§2). Addressed
 // publicly by owner username + slug; `id` is a server-generated opaque string.
 export const models = pgTable("models", {

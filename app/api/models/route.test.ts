@@ -3,9 +3,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { eq } from "drizzle-orm";
+import { createApiToken } from "@/lib/auth/tokens.server";
 import { setDatabaseForTests } from "@/lib/db/client.server";
-import { revisions } from "@/lib/db/schema";
+import { revisions, user } from "@/lib/db/schema";
 import { createTestDatabase } from "@/lib/db/test-db.server";
+import { listModelVersions } from "@/lib/models/models.server";
 import { saveRevision } from "@/lib/models/revisions.server";
 import { saveHostedModel } from "@/lib/models/store.server";
 import { POST } from "./route";
@@ -32,14 +34,48 @@ afterAll(async () => {
   await rm(storageDirectory, { recursive: true, force: true });
 });
 
+function tokenPublish(body: unknown, token?: string) {
+  return POST(new Request("http://localhost/api/models", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+  }));
+}
+
 describe("hosted model API", () => {
   it("rejects anonymous publishing with a pointer to sign-in (D6)", async () => {
-    const response = await POST();
+    const response = await tokenPublish({ name: "X", source: "cube(4);" });
     expect(response.status).toBe(401);
     expect(response.headers.get("access-control-allow-origin")).toBe("*");
     const payload = await response.json();
     expect(payload.error).toMatch(/sign in/i);
     expect(payload.error).toMatch(/token/i);
+    expect((await tokenPublish({ name: "X", source: "cube(4);" }, "pc_bogus")).status).toBe(401);
+  });
+
+  it("publishes with a bearer token: new model, then a new version of it", async () => {
+    await testDb.db.insert(user).values({ id: "token-user", name: "Token User", email: "t@example.com", username: "token-user" });
+    const { token } = await createApiToken("token-user", testDb.db);
+
+    const created = await tokenPublish({ name: "CLI widget", source: "cube([4, 4, 4]);", tags: ["cli"] }, token);
+    expect(created.status).toBe(201);
+    const createdPayload = await created.json();
+    expect(createdPayload.url).toBe("/u/token-user/cli-widget");
+    expect(createdPayload.model.ownerId).toBe("token-user");
+
+    const updated = await tokenPublish({ name: "CLI widget", source: "cube([5, 5, 5]);", modelId: createdPayload.model.id }, token);
+    expect(updated.status).toBe(201);
+    const updatedPayload = await updated.json();
+    expect(updatedPayload.version).toBe(2);
+    expect((await listModelVersions(createdPayload.model.id, testDb.db)).map((entry) => entry.version)).toEqual([2, 1]);
+
+    // Another account's token cannot push versions to it.
+    await testDb.db.insert(user).values({ id: "intruder", name: "Intruder", email: "i@example.com", username: "intruder" });
+    const { token: intruderToken } = await createApiToken("intruder", testDb.db);
+    expect((await tokenPublish({ name: "CLI widget", source: "cube([6, 6, 6]);", modelId: createdPayload.model.id }, intruderToken)).status).toBe(403);
   });
 
   it("serves stored revisions with etag and conditional requests", async () => {
