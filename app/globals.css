@@ -246,3 +246,14 @@ input[type="range"]::-webkit-slider-thumb { margin-top: -5px; width: 13px; heigh
 .welcome-card input:focus { border-color: var(--accent); }
 .welcome-card .primary-button { justify-content: center; padding: 10px 13px; }
 .welcome-problem { display: flex; align-items: center; gap: 6px; color: #eab779; font-size: 12px; }
+
+/* Publish dialog */
+.modal-overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(8, 10, 8, .62); z-index: 90; }
+.publish-dialog { width: min(460px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); overflow-y: auto; }
+.publish-field { display: flex; flex-direction: column; gap: 5px; flex: 1; }
+.publish-field > span { font-size: 11px; font-weight: 650; letter-spacing: .4px; text-transform: uppercase; color: #9aa39a; }
+.publish-field > span small { text-transform: none; letter-spacing: 0; font-weight: 450; }
+.publish-field textarea, .publish-field select, .publish-field input { padding: 9px 11px; font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; outline: none; resize: vertical; }
+.publish-field textarea:focus, .publish-field select:focus, .publish-field input:focus { border-color: var(--accent); }
+.publish-row { display: flex; gap: 10px; justify-content: flex-end; }
+.publish-row .publish-field { justify-content: flex-start; }

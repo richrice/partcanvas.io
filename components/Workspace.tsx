@@ -21,6 +21,7 @@ import {
   TriangleAlert,
   Upload,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AuthMenu } from "./AuthMenu";
 import { CodeEditor, type CursorLocation } from "./CodeEditor";
@@ -32,6 +33,8 @@ import { defaultParameterValues, extractParameters, type ParameterValue } from "
 import { extensionOf, isEditableProjectFile, readProjectFile } from "@/lib/project-assets";
 import { resolveSourceFiles } from "@/lib/scad/files";
 import { inspectOpenScadParameterSets, loadOpenScadParameterFile } from "@/lib/scad/parameter-sets";
+import { authClient } from "@/lib/auth/client";
+import { LICENSES, VISIBILITIES, type License, type Visibility } from "@/lib/models/types";
 import { decodeSharedModel, encodeSharedModel } from "@/lib/share";
 
 const format = (value: number) => value >= 100 ? value.toFixed(0) : value >= 10 ? value.toFixed(1) : value.toFixed(2);
@@ -69,6 +72,14 @@ export function Workspace({ initialModel }: { initialModel?: InitialWorkspaceMod
   const [mobilePanel, setMobilePanel] = useState<"code" | "preview" | "parameters">("preview");
   const [notice, setNotice] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
+  const [showPublishDialog, setShowPublishDialog] = useState(false);
+  const [publishDescription, setPublishDescription] = useState("");
+  const [publishLicense, setPublishLicense] = useState<License>("CC-BY-4.0");
+  const [publishVisibility, setPublishVisibility] = useState<Visibility>("public");
+  const [publishTags, setPublishTags] = useState("");
+  const [publishError, setPublishError] = useState<string | null>(null);
+  const { data: authSession } = authClient.useSession();
+  const router = useRouter();
   const [cursorLocation, setCursorLocation] = useState<CursorLocation>({ line: 1, column: 1 });
   const uploadRef = useRef<HTMLInputElement>(null);
   const parameterPresets = useMemo(() => Object.keys(projectFiles)
@@ -174,6 +185,13 @@ export function Workspace({ initialModel }: { initialModel?: InitialWorkspaceMod
 
   const publishModel = async () => {
     if (!result?.geometry || result.dimension !== 3 || publishing) return;
+    // Signed-in publish collects social metadata and creates an owned model
+    // page; the anonymous flow keeps the legacy hosted-revision behavior.
+    if (authSession?.user) {
+      setPublishError(null);
+      setShowPublishDialog(true);
+      return;
+    }
     setPublishing(true);
     try {
       const response = await fetch("/api/models", {
@@ -190,6 +208,37 @@ export function Workspace({ initialModel }: { initialModel?: InitialWorkspaceMod
     } finally {
       setPublishing(false);
       window.setTimeout(() => setNotice(null), 2600);
+    }
+  };
+
+  const publishOwnedModel = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (publishing) return;
+    setPublishing(true);
+    setPublishError(null);
+    try {
+      const response = await fetch("/api/app/models", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: modelName,
+          source,
+          files: projectFiles,
+          parameters,
+          description: publishDescription,
+          license: publishLicense,
+          visibility: publishVisibility,
+          tags: publishTags.split(",").map((tag) => tag.trim()).filter(Boolean),
+        }),
+      });
+      const payload = await response.json() as { url?: string; error?: string };
+      if (!response.ok || !payload.url) throw new Error(payload.error || "Could not publish model");
+      setShowPublishDialog(false);
+      router.push(payload.url);
+    } catch (error) {
+      setPublishError(error instanceof Error ? error.message : "Could not publish model");
+    } finally {
+      setPublishing(false);
     }
   };
 
@@ -389,6 +438,46 @@ export function Workspace({ initialModel }: { initialModel?: InitialWorkspaceMod
         </aside>
       </section>
       {notice && <div className="app-toast"><Check size={14} /> {notice}</div>}
+      {showPublishDialog && (
+        <div className="modal-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowPublishDialog(false); }}>
+          <form className="welcome-card publish-dialog" onSubmit={publishOwnedModel}>
+            <h1>Publish model</h1>
+            <label className="publish-field">
+              <span>Title</span>
+              <input aria-label="Model title" maxLength={80} value={modelName} onChange={(event) => setModelName(event.target.value)} required />
+            </label>
+            <label className="publish-field">
+              <span>Description</span>
+              <textarea aria-label="Model description" maxLength={1000} rows={3} value={publishDescription} onChange={(event) => setPublishDescription(event.target.value)} placeholder="What does it print, and how is it customized?" />
+            </label>
+            <div className="publish-row">
+              <label className="publish-field">
+                <span>License</span>
+                <select aria-label="License" value={publishLicense} onChange={(event) => setPublishLicense(event.target.value as License)}>
+                  {LICENSES.map((license) => <option key={license} value={license}>{license}</option>)}
+                </select>
+              </label>
+              <label className="publish-field">
+                <span>Visibility</span>
+                <select aria-label="Visibility" value={publishVisibility} onChange={(event) => setPublishVisibility(event.target.value as Visibility)}>
+                  {VISIBILITIES.map((visibility) => <option key={visibility} value={visibility}>{visibility}</option>)}
+                </select>
+              </label>
+            </div>
+            <label className="publish-field">
+              <span>Tags <small>(comma separated, up to 12)</small></span>
+              <input aria-label="Tags" value={publishTags} onChange={(event) => setPublishTags(event.target.value)} placeholder="gears, robotics" />
+            </label>
+            {publishError && <span className="welcome-problem"><TriangleAlert size={13} /> {publishError}</span>}
+            <div className="publish-row">
+              <button type="button" className="ghost-button" onClick={() => setShowPublishDialog(false)}>Cancel</button>
+              <button className="primary-button" type="submit" disabled={publishing || !modelName.trim()}>
+                {publishing ? <><LoaderCircle className="spinner" size={15} /> Publishing…</> : <><CloudUpload size={15} /> Publish</>}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </main>
   );
 }
