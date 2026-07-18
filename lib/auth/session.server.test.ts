@@ -3,6 +3,7 @@ import { createHmac } from "node:crypto";
 import { setDatabaseForTests } from "../db/client.server";
 import { session, user } from "../db/schema";
 import { createTestDatabase } from "../db/test-db.server";
+import { getAuth } from "./auth.server";
 import { getSessionUser, setSessionUserForTests } from "./session.server";
 
 const SECRET = "test-secret-for-vitest-only";
@@ -64,6 +65,21 @@ describe("getSessionUser", () => {
     expect(await getSessionUser(new Request("http://localhost:3000/api/app/models"))).toBeNull();
     const forged = `better-auth.session_token=${encodeURIComponent("session-token-1.AAAA")}`;
     expect(await getSessionUser(new Request("http://localhost:3000/api/app/models", { headers: { cookie: forged } }))).toBeNull();
+  });
+
+  it("updates display name and bio through the update-user endpoint (settings page contract)", async () => {
+    const response = await getAuth().handler(new Request("http://localhost:3000/api/auth/update-user", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: "http://localhost:3000",
+        cookie: sessionCookie("session-token-1"),
+      },
+      body: JSON.stringify({ name: "Renamed Author", bio: "Now I make gears." }),
+    }));
+    expect(response.status).toBe(200);
+    const [row] = await testDb.db.select({ name: user.name, bio: user.bio, username: user.username }).from(user);
+    expect(row).toEqual({ name: "Renamed Author", bio: "Now I make gears.", username: "test-author" });
   });
 
   it("honors the test stub", async () => {

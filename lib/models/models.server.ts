@@ -13,6 +13,7 @@ export interface ModelOwner {
   id: string;
   username: string | null;
   name: string;
+  bio: string | null;
 }
 
 export interface CreateModelInput {
@@ -91,7 +92,7 @@ export async function readModel(id: string, db: Database = getDb()): Promise<Mod
 }
 
 export async function getModelByOwnerSlug(username: string, slug: string, db: Database = getDb()): Promise<{ model: ModelRow; owner: ModelOwner } | null> {
-  const [row] = await db.select({ model: models, owner: { id: user.id, username: user.username, name: user.name } })
+  const [row] = await db.select({ model: models, owner: { id: user.id, username: user.username, name: user.name, bio: user.bio } })
     .from(models)
     .innerJoin(user, eq(models.ownerId, user.id))
     .where(and(eq(user.username, username), eq(models.slug, slug)))
@@ -103,7 +104,7 @@ export async function getModelByOwnerSlug(username: string, slug: string, db: Da
 // unlisted/private models never appear in another user's view of a profile
 // (D10: unlisted resolves by direct link only).
 export async function listModelsByOwner(username: string, options: { viewerId?: string } = {}, db: Database = getDb()): Promise<{ owner: ModelOwner; models: ModelRow[] } | null> {
-  const [owner] = await db.select({ id: user.id, username: user.username, name: user.name }).from(user).where(eq(user.username, username)).limit(1);
+  const [owner] = await db.select({ id: user.id, username: user.username, name: user.name, bio: user.bio }).from(user).where(eq(user.username, username)).limit(1);
   if (!owner) return null;
   const rows = await db.select().from(models)
     .where(options.viewerId === owner.id
