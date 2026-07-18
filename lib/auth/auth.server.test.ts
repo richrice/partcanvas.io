@@ -34,6 +34,7 @@ describe("better auth wiring", () => {
     const response = await auth.handler(new Request("http://localhost:3000/api/auth/get-session"));
     expect(response.status).toBe(200);
     expect(await response.json()).toBeNull();
+    expect(response.headers.get("access-control-allow-origin")).toBeNull();
   });
 
   it("starts a GitHub social sign-in and persists OAuth state through the drizzle adapter", async () => {

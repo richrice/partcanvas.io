@@ -11,14 +11,21 @@ const nextConfig: NextConfig = {
     }];
   },
   async headers() {
-    return [{
-      source: "/api/:path*",
-      headers: [
-        { key: "Access-Control-Allow-Origin", value: "*" },
-        { key: "Access-Control-Allow-Methods", value: "GET, POST, OPTIONS" },
-        { key: "Access-Control-Allow-Headers", value: "content-type" },
-      ],
-    }];
+    // D5: permissive CORS ONLY on the public compute/read API. Cookie-
+    // authenticated endpoints (/api/auth/*, /api/app/*) must never be listed
+    // here — wildcard CORS and session cookies do not mix.
+    const cors = [
+      { key: "Access-Control-Allow-Origin", value: "*" },
+      { key: "Access-Control-Allow-Methods", value: "GET, POST, OPTIONS" },
+      { key: "Access-Control-Allow-Headers", value: "content-type" },
+    ];
+    return [
+      { source: "/api/render", headers: cors },
+      { source: "/api/parameters", headers: cors },
+      { source: "/api/models/:path*", headers: cors },
+      { source: "/api/health", headers: cors },
+      { source: "/api/capabilities", headers: cors },
+    ];
   },
 };
 
