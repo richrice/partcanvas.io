@@ -32,6 +32,9 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 # SQL migrations are read from disk at boot (instrumentation.ts), so the
 # standalone output tracing does not pick them up.
 COPY --from=builder --chown=nextjs:nodejs /app/drizzle ./drizzle
+# One-shot operational scripts (P1.3 import) run inside this container via
+# `railway ssh -- node scripts/...` — the legacy model volume only exists here.
+COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
 
 USER nextjs
 EXPOSE 3000
