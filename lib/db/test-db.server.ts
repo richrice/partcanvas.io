@@ -15,9 +15,9 @@ export type TestDatabase = PgliteDatabase<typeof schema>;
 //   beforeAll(async () => { testDb = await createTestDatabase(); });
 //   afterAll(() => testDb.close());
 //   // pass testDb.db to the module under test
-export async function createTestDatabase(): Promise<{ db: TestDatabase; close: () => Promise<void> }> {
+export async function createTestDatabase(): Promise<{ db: TestDatabase; client: PGlite; close: () => Promise<void> }> {
   const client = new PGlite();
   const db = drizzle(client, { schema });
   await migrate(db, { migrationsFolder: path.join(process.cwd(), "drizzle") });
-  return { db, close: () => client.close() };
+  return { db, client, close: () => client.close() };
 }
