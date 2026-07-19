@@ -37,12 +37,61 @@ function parseLiteral(raw: string): ParameterValue | undefined {
   return undefined;
 }
 
-// Only ALL_CAPS top-level variables (letters, digits, underscores; no lowercase) are exposed as
-// customizable parameters — lowercase variables stay internal to the script.
+// ALL_CAPS top-level variables (letters, digits, underscores; no lowercase) are always exposed as
+// customizable parameters. Other names are exposed only when the script shows explicit Customizer
+// intent: the assignment sits under a named /* [Section] */ group, or its trailing comment carries
+// a control annotation that parses as a range or an option list. Everything else stays internal.
 const CONTROLLABLE_NAME = /^[A-Z][A-Z0-9_]*$/;
 
 function titleCase(name: string) {
   return name.toLowerCase().replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+type ControlSpec =
+  | { kind: "range"; min: number; step: number; max: number }
+  | { kind: "options"; options: ParameterOption[] };
+
+function integerStep(min: number, max: number, defaultValue: ParameterValue) {
+  const defaultNumbers = Array.isArray(defaultValue) ? defaultValue : [defaultValue];
+  return Number.isInteger(min) && Number.isInteger(max)
+    && defaultNumbers.every((item) => typeof item === "number" && Number.isInteger(item))
+    ? 1
+    : Math.max((max - min) / 100, 0.01);
+}
+
+function parseControl(control: string, defaultValue: ParameterValue): ControlSpec | undefined {
+  const numericParts = control.split(":").map(Number);
+  if (numericParts.every(Number.isFinite) && numericParts.length >= 1 && numericParts.length <= 3) {
+    // OpenSCAD numeric forms: [max], [min:max], [min:step:max]
+    if (numericParts.length === 1) return { kind: "range", min: 0, max: numericParts[0], step: integerStep(0, numericParts[0], defaultValue) };
+    if (numericParts.length === 2) return { kind: "range", min: numericParts[0], max: numericParts[1], step: integerStep(numericParts[0], numericParts[1], defaultValue) };
+    return { kind: "range", min: numericParts[0], step: numericParts[1], max: numericParts[2] };
+  }
+  if (Array.isArray(defaultValue)) return undefined;
+  // Option lists: OpenSCAD uses commas with optional value:label pairs; colon-separated lists
+  // without commas ([PLA:PETG:ABS]) are a common in-the-wild enum form and are read as plain values.
+  if (control.includes(",")) {
+    return {
+      kind: "options",
+      options: control.split(",").map((option) => {
+        const [rawOptionValue, rawLabel] = option.split(":");
+        const candidate = parseLiteral(rawOptionValue) ?? rawOptionValue.trim();
+        const parsed = Array.isArray(candidate) ? rawOptionValue.trim() : candidate;
+        return { value: parsed, label: rawLabel?.trim() || String(parsed) };
+      }),
+    };
+  }
+  if (control.includes(":")) {
+    return {
+      kind: "options",
+      options: control.split(":").map((option) => {
+        const candidate = parseLiteral(option) ?? option.trim();
+        const parsed = Array.isArray(candidate) ? option.trim() : candidate;
+        return { value: parsed, label: String(parsed) };
+      }),
+    };
+  }
+  return undefined;
 }
 
 export function extractParameters(source: string): ModelParameter[] {
@@ -56,6 +105,7 @@ export function extractParameters(source: string): ModelParameter[] {
     colorReferences.add(match[1]);
   }
   let section = "Parameters";
+  let sectionExplicit = false;
   let depth = 0;
   let pendingDescription = "";
   const lines = source.split(/\r?\n/);
@@ -65,6 +115,7 @@ export function extractParameters(source: string): ModelParameter[] {
     const sectionMatch = line.match(/^\s*\/\*\s*\[([^\]]+)]\s*\*\/\s*$/);
     if (sectionMatch && depth === 0) {
       section = sectionMatch[1].trim();
+      sectionExplicit = true;
       pendingDescription = "";
       return;
     }
@@ -81,8 +132,11 @@ export function extractParameters(source: string): ModelParameter[] {
         matchedAssignment = true;
         const [, name, rawValue, rawComment = ""] = assignment;
         const defaultValue = parseLiteral(rawValue);
-        if (defaultValue !== undefined && CONTROLLABLE_NAME.test(name) && section.toLowerCase() !== "hidden") {
-          const controlMatch = rawComment.match(/\[([^\]]+)]/);
+        const controlMatch = defaultValue === undefined ? null : rawComment.match(/\[([^\]]+)]/);
+        const control = controlMatch && defaultValue !== undefined ? parseControl(controlMatch[1].trim(), defaultValue) : undefined;
+        const exposed = defaultValue !== undefined && section.toLowerCase() !== "hidden"
+          && (CONTROLLABLE_NAME.test(name) || sectionExplicit || control !== undefined);
+        if (exposed && defaultValue !== undefined) {
           let prose = rawComment.replace(/\s*\[[^\]]+]\s*/, "").trim();
           // A standalone parenthesized unit token in the same-line comment
           // overrides the name-based unit inference, e.g. `// Stud span (none)`
@@ -106,38 +160,22 @@ export function extractParameters(source: string): ModelParameter[] {
                 ? "°"
                 : /count|copies|quantity|segments|facets|quality|resolution|rows|columns|cols|steps|index|(?:^|_)per(?:_|$)/i.test(name) ? "" : "mm";
           }
-          if (controlMatch) {
-            const control = controlMatch[1].trim();
-            const numericParts = control.split(":").map(Number);
-            if (numericParts.every(Number.isFinite) && (numericParts.length === 2 || numericParts.length === 3)) {
-              parameter.min = numericParts[0];
-              if (numericParts.length === 2) {
-                parameter.max = numericParts[1];
-                const defaultNumbers = Array.isArray(defaultValue) ? defaultValue : [defaultValue];
-                parameter.step = Number.isInteger(parameter.min) && Number.isInteger(parameter.max)
-                  && defaultNumbers.every((item) => typeof item === "number" && Number.isInteger(item))
-                  ? 1
-                  : Math.max((parameter.max - parameter.min) / 100, 0.01);
-              } else {
-                parameter.step = numericParts[1];
-                parameter.max = numericParts[2];
-              }
-              if (!Array.isArray(defaultValue)) parameter.type = "number";
-            } else if (control.includes(",") && !Array.isArray(defaultValue)) {
-              parameter.options = control.split(",").map((option) => {
-                const [rawOptionValue, rawLabel] = option.split(":");
-                const candidate = parseLiteral(rawOptionValue) ?? rawOptionValue.trim();
-                const parsed = Array.isArray(candidate) ? rawOptionValue.trim() : candidate;
-                return { value: parsed, label: rawLabel?.trim() || String(parsed) };
-              });
-              parameter.type = "select";
-            }
+          if (control?.kind === "range") {
+            parameter.min = control.min;
+            parameter.step = control.step;
+            parameter.max = control.max;
+            if (!Array.isArray(defaultValue)) parameter.type = "number";
+          } else if (control?.kind === "options" && typeof defaultValue !== "boolean") {
+            // Boolean option lists like [true:false] stay checkboxes.
+            parameter.options = control.options;
+            parameter.type = "select";
           }
-          const colorByName = /(?:^|_)(?:color|colour)(?:_|$)/i.test(name);
           const colorVector = Array.isArray(defaultValue)
             && (defaultValue.length === 3 || defaultValue.length === 4)
             && defaultValue.every((component) => component >= 0 && component <= 1);
-          if (!parameter.options && (colorByName || colorReferences.has(name)) && (typeof defaultValue === "string" || colorVector)) {
+          // Only variables that actually flow into color() get the picker; a color-ish
+          // name alone (e.g. a filament color label rendered as text) stays a string.
+          if (!parameter.options && colorReferences.has(name) && (typeof defaultValue === "string" || colorVector)) {
             parameter.type = "color";
             parameter.unit = undefined;
           }

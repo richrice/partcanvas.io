@@ -8,7 +8,6 @@ import {
   maths,
   measurements,
   primitives,
-  text as modelingText,
   transforms,
 } from "@jscad/modeling";
 import { deserialize as deserializeDxf } from "@jscad/dxf-deserializer";
@@ -22,6 +21,7 @@ import type { Argument, Binding, Expression, ModuleParameter, Program, Statement
 import { canonicalProjectPath } from "./files";
 import type { ParameterInput } from "./parameters";
 import { buildStraightRoof } from "./roof";
+import { textGeometry } from "./text-geometry";
 
 export type CadGeometry = Geom2 | Geom3;
 export type ScadValue = number | string | boolean | null | ScadValue[];
@@ -208,14 +208,61 @@ export function isGeom3(geometry: CadGeometry): geometry is Geom3 {
   return geometries.geom3.isA(geometry);
 }
 
+function preserveColor(source: CadGeometry, result: CadGeometry): CadGeometry {
+  const color = (source as { color?: [number, number, number, number] }).color;
+  return color ? colors.colorize(color, result) as CadGeometry : result;
+}
+
+// Boolean-union only solids whose bounding boxes overlap; disjoint clusters are
+// concatenated as intact shells instead. Concatenation is exact for disjoint
+// geometry, while JSCAD's boolean union re-tessellates everything it touches
+// and leaves T-junction micro-cracks even between solids that never meet.
+function unionPreservingShells<T extends CadGeometry>(bucket: T[]): CadGeometry {
+  if (bucket.length === 1) return bucket[0];
+  const bounds = bucket.map((item) => measurements.measureBoundingBox(item) as number[][]);
+  const parent = bucket.map((_, index) => index);
+  const find = (index: number): number => parent[index] === index ? index : (parent[index] = find(parent[index]));
+  for (let a = 0; a < bucket.length; a++) {
+    for (let b = a + 1; b < bucket.length; b++) {
+      const overlap = bounds[a][0].every((_, axis) =>
+        bounds[a][1][axis] >= bounds[b][0][axis] - 1e-9 && bounds[b][1][axis] >= bounds[a][0][axis] - 1e-9);
+      if (overlap) parent[find(a)] = find(b);
+    }
+  }
+  const clusters = new Map<number, T[]>();
+  bucket.forEach((item, index) => {
+    const key = find(index);
+    const cluster = clusters.get(key);
+    if (cluster) cluster.push(item);
+    else clusters.set(key, [item]);
+  });
+  const union = booleans.union as (items: T[]) => CadGeometry;
+  const merged = [...clusters.values()].map((cluster) => cluster.length === 1 ? cluster[0] : union(cluster));
+  if (merged.length === 1) return merged[0];
+  if (isGeom3(merged[0])) {
+    return geometries.geom3.create(merged.flatMap((item) => geometries.geom3.toPolygons(item as Geom3)));
+  }
+  return geometries.geom2.create(merged.flatMap((item) => geometries.geom2.toSides(item as Geom2)));
+}
+
+// Union children per color so an explicit union() keeps the per-color part
+// split that drives viewport colors and 3MF extruder assignment, matching how
+// OpenSCAD's preview keeps color through boolean unions.
+function unionByColor<T extends CadGeometry>(items: T[]): CadGeometry[] {
+  const buckets = new Map<string, T[]>();
+  for (const item of items) {
+    const color = (item as { color?: number[] }).color;
+    const key = color ? color.join(",") : "";
+    const bucket = buckets.get(key);
+    if (bucket) bucket.push(item);
+    else buckets.set(key, [item]);
+  }
+  return [...buckets.values()].map((bucket) => preserveColor(bucket[0], unionPreservingShells(bucket)));
+}
+
 function unionAll(items: CadGeometry[]): CadGeometry[] {
   if (items.length <= 1) return items;
-  const twoD = items.filter(isGeom2);
-  const threeD = items.filter(isGeom3);
-  const output: CadGeometry[] = [];
-  if (twoD.length) output.push(booleans.union(twoD) as CadGeometry);
-  if (threeD.length) output.push(booleans.union(threeD) as CadGeometry);
-  return output;
+  return [...unionByColor(items.filter(isGeom2)), ...unionByColor(items.filter(isGeom3))];
 }
 
 export function evaluate(
@@ -550,28 +597,20 @@ export function evaluate(
       const input = String(get("text", 0, ""));
       const size = Math.max(0.01, num(get("size", 1, 10), 10));
       const font = get("font", 2, "");
-      const horizontal = String(get("halign", 3, "left"));
-      const vertical = String(get("valign", 4, "baseline"));
-      const spacing = Math.max(0.01, num(get("spacing", 5, 1), 1));
-      const direction = String(get("direction", 6, "ltr"));
-      if (typeof font === "string" && font && !/simplex/i.test(font)) {
-        warnings.push(`Font '${font}' is not bundled; text() used the built-in printable simplex font`);
+      const result = textGeometry({
+        text: input,
+        size,
+        font: typeof font === "string" ? font : "",
+        halign: String(get("halign", 3, "left")),
+        valign: String(get("valign", 4, "baseline")),
+        spacing: Math.max(0.01, num(get("spacing", 5, 1), 1)),
+        direction: String(get("direction", 6, "ltr")),
+        segments,
+      });
+      if (!result.fontMatched) {
+        warnings.push(`Font '${String(font)}' is not bundled; text() used ${result.usedFontName}`);
       }
-      const content = direction === "rtl" ? [...input].reverse().join("") : input;
-      const strokes = modelingText.vectorText({ input: content, height: size, letterSpacing: spacing, align: "left" });
-      const strokeWidth = Math.max(size / 11, 0.2);
-      const glyphParts = strokes
-        .filter((stroke) => stroke.length >= 2)
-        .map((stroke) => expansions.expand({ delta: strokeWidth / 2, corners: "round", segments }, geometries.path2.fromPoints({ closed: false }, stroke)));
-      if (!glyphParts.length) return [];
-      let shape = booleans.union(glyphParts);
-      const bounds = measurements.measureBoundingBox(shape) as [[number, number, number], [number, number, number]];
-      const offsetX = horizontal === "center" ? -(bounds[0][0] + bounds[1][0]) / 2 : horizontal === "right" ? -bounds[1][0] : -bounds[0][0];
-      const offsetY = vertical === "center" ? -(bounds[0][1] + bounds[1][1]) / 2
-        : vertical === "top" ? -bounds[1][1]
-          : vertical === "bottom" ? -bounds[0][1] : 0;
-      shape = transforms.translate([offsetX, offsetY, 0], shape);
-      return [shape];
+      return result.geometry ? [result.geometry] : [];
     }
     if (name === "polygon") {
       const rawPoints = get("points", 0, []);
@@ -612,24 +651,57 @@ export function evaluate(
       return [booleans.intersect(generated.filter(isGeom3))];
     }
 
-    const children = evalStatements(statement.children, env);
     if (["union", "difference", "intersection", "hull", "minkowski"].includes(name)) {
-      if (!children.length) return [];
+      // OpenSCAD boolean semantics operate on child *nodes*: a for loop, module
+      // call, or block counts as one operand no matter how many solids it
+      // yields, and children that yield no geometry are dropped entirely (an
+      // empty first child does not empty a difference). Hoisting mirrors
+      // evalStatements so definitions and assignments behave identically.
+      for (const child of statement.children) {
+        if (child.type === "module") env.modules.set(child.name, { parameters: child.parameters, body: child.body });
+        if (child.type === "function") env.functions.set(child.name, { parameters: child.parameters, body: child.body });
+      }
+      for (const child of statement.children) {
+        if (child.type === "assignment") evalStatement(child, env);
+      }
+      const groups = statement.children
+        .filter((child) => child.type !== "assignment" && child.type !== "module" && child.type !== "function" && child.type !== "noop")
+        .map((child) => evalStatement(child, env))
+        .filter((group) => group.length > 0);
+      const children = groups.flat();
       if (name === "union") return unionAll(children);
+      if (!children.length) return [];
       if (isGeom2(children[0])) {
         const matching = children.filter(isGeom2);
-        if (name === "difference") return [booleans.subtract(matching[0], ...matching.slice(1))];
-        if (name === "intersection") return [booleans.intersect(matching)];
         if (name === "hull") return [hulls.hull(matching)];
-        warnings.push("minkowski() currently requires 3D children");
-        return [];
+        if (name === "minkowski") {
+          warnings.push("minkowski() currently requires 3D children");
+          return [];
+        }
+        const flatGroups = groups.map((group) => group.filter(isGeom2)).filter((group) => group.length > 0);
+        if (name === "difference") {
+          const positives = flatGroups[0];
+          const negatives = flatGroups.slice(1).flat();
+          if (!negatives.length) return positives;
+          return positives.map((part) => preserveColor(part, booleans.subtract(part, ...negatives)));
+        }
+        const operands = flatGroups.map((group) => group.length === 1 ? group[0] : booleans.union(group));
+        return [preserveColor(flatGroups[0][0], operands.length === 1 ? operands[0] : booleans.intersect(operands))];
       }
       const matching = children.filter(isGeom3);
-      if (name === "difference") return [booleans.subtract(matching[0], ...matching.slice(1))];
-      if (name === "intersection") return [booleans.intersect(matching)];
-      if (name === "minkowski") return [booleans.minkowski(...matching)];
-      return [hulls.hull(matching)];
+      if (name === "hull") return [hulls.hull(matching)];
+      const solidGroups = groups.map((group) => group.filter(isGeom3)).filter((group) => group.length > 0);
+      const operands = solidGroups.map((group) => group.length === 1 ? group[0] : booleans.union(group));
+      if (name === "minkowski") return [booleans.minkowski(...operands)];
+      if (name === "difference") {
+        const positives = solidGroups[0];
+        const negatives = solidGroups.slice(1).flat();
+        if (!negatives.length) return positives;
+        return positives.map((part) => preserveColor(part, booleans.subtract(part, ...negatives)));
+      }
+      return [preserveColor(solidGroups[0][0], operands.length === 1 ? operands[0] : booleans.intersect(operands))];
     }
+    const children = evalStatements(statement.children, env);
     if (name === "translate") {
       const offset = vector(get("v", 0, [0, 0, 0]), 3) as [number, number, number];
       return children.map((child) => transforms.translate(offset, child) as CadGeometry);

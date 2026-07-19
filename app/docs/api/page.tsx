@@ -99,7 +99,7 @@ export default function ApiDocsPage() {
 
           <section id="parameters" className="docs-section">
             <div className="endpoint-title"><span className="method">POST</span><code>/api/parameters</code></div>
-            <p>Validate source and return its customizer schema, groups, defaults, ranges, vector controls, and select options. Only <code>ALL_CAPS</code> top-level variables are exposed in the schema; lowercase variables stay internal to the script, although <code>defines</code> overrides can still target them. Send optional <code>values</code> and <code>checkRanges</code> to receive structured diagnostics before rendering. Supplying <code>parameterFile</code> discovers all named OpenSCAD presets; add <code>parameterSet</code> to resolve one into typed values.</p>
+            <p>Validate source and return its customizer schema, groups, defaults, ranges, vector controls, and select options. Top-level variables are exposed in the schema when their name is <code>ALL_CAPS</code>, when they sit under a named <code>{"/* [Section] */"}</code> group, or when they carry a range/option control annotation; other lowercase variables stay internal to the script, although <code>defines</code> overrides can still target them. Send optional <code>values</code> and <code>checkRanges</code> to receive structured diagnostics before rendering. Supplying <code>parameterFile</code> discovers all named OpenSCAD presets; add <code>parameterSet</code> to resolve one into typed values.</p>
             <div className="code-card wide"><div><Braces size={13} /> cURL</div><pre>{inspectExample}</pre></div>
           </section>
 

@@ -185,7 +185,7 @@ export async function POST(request: Request) {
       ? body.filename.replace(/[^a-zA-Z0-9._-]/g, "-").replace(/\.(?:stl|obj|3mf|step|stp|svg|dxf)$/i, "")
       : "partcanvas-model";
     const serializeStart = performance.now();
-    const serialized = serializeGeometry(format === "3mf" ? result.parts : result.geometry, format as ExportFormat, filename);
+    const serialized = serializeGeometry(result.parts.length ? result.parts : result.geometry, format as ExportFormat, filename);
     const serializeMs = performance.now() - serializeStart;
     if (requestedSummary) {
       const dimension = result.dimension as 2 | 3;

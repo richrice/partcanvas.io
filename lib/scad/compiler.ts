@@ -151,9 +151,14 @@ export function compileScad(source: string, options: CompileOptions = {}): Compi
   };
 }
 
-export function geometryToBinaryStl(geometry: CadGeometry, name = "partcanvas-model"): Uint8Array {
-  if (!isGeom3(geometry)) throw new Error("STL export requires 3D geometry");
-  const chunks = serializeStl({ binary: true, name }, geometry);
+export function geometryToBinaryStl(geometry: CadGeometry | CadGeometry[], name = "partcanvas-model"): Uint8Array {
+  // Multiple parts are written as separate watertight shells in one mesh
+  // (like OpenSCAD's lazy union) instead of being boolean-unioned: JSCAD's
+  // union leaves micro T-junctions on coplanar interfaces, while intact
+  // shells stay individually manifold and slice cleanly.
+  const solids = (Array.isArray(geometry) ? geometry : [geometry]).filter(isGeom3);
+  if (!solids.length) throw new Error("STL export requires 3D geometry");
+  const chunks = serializeStl({ binary: true, name }, ...solids);
   return chunksToBytes(chunks);
 }
 
@@ -171,27 +176,28 @@ function chunksToBytes(chunks: ArrayBuffer[] | Uint8Array[] | string[]): Uint8Ar
 
 export function serializeGeometry(input: CadGeometry | CadGeometry[], format: ExportFormat, name = "partcanvas-model"): SerializedModel {
   const items = Array.isArray(input) ? input : [input];
-  const geometry = items.length === 1
-    ? items[0]
-    : items.every(isGeom3) ? booleans.union(items) : booleans.union(items.filter(isGeom2));
-  if (format === "svg") {
-    if (!isGeom2(geometry)) throw new Error("SVG export requires 2D geometry");
-    return { data: chunksToBytes(serializeSvg({ unit: "mm" }, geometry)), extension: "svg", mimeType: "image/svg+xml; charset=utf-8" };
-  }
-  if (format === "dxf") {
-    if (!isGeom2(geometry)) throw new Error("DXF export requires 2D geometry");
+  if (format === "svg" || format === "dxf") {
+    const flats = items.filter(isGeom2);
+    if (!flats.length) throw new Error(`${format.toUpperCase()} export requires 2D geometry`);
+    const geometry = flats.length === 1 ? flats[0] : booleans.union(flats);
+    if (format === "svg") {
+      return { data: chunksToBytes(serializeSvg({ unit: "mm" }, geometry)), extension: "svg", mimeType: "image/svg+xml; charset=utf-8" };
+    }
     return { data: chunksToBytes(serializeDxf({ geom2To: "lwpolyline" }, geometry)), extension: "dxf", mimeType: "application/dxf; charset=utf-8" };
   }
-  if (!isGeom3(geometry)) throw new Error(`${format.toUpperCase()} export requires 3D geometry`);
-  if (format === "stl") return { data: geometryToBinaryStl(geometry, name), extension: "stl", mimeType: "model/stl" };
+  const solids = items.filter(isGeom3);
+  if (!solids.length) throw new Error(`${format.toUpperCase()} export requires 3D geometry`);
+  // Multi-part models export as separate watertight shells (see geometryToBinaryStl).
+  if (format === "stl") return { data: geometryToBinaryStl(solids, name), extension: "stl", mimeType: "model/stl" };
   if (format === "obj") {
-    return { data: chunksToBytes(serializeObj({ triangulate: true }, geometry)), extension: "obj", mimeType: "text/plain; charset=utf-8" };
+    return { data: chunksToBytes(serializeObj({ triangulate: true }, ...solids)), extension: "obj", mimeType: "text/plain; charset=utf-8" };
   }
   if (format === "step") {
+    const geometry = solids.length === 1 ? solids[0] : booleans.union(solids);
     return { data: serializeStep(geometry, name), extension: "step", mimeType: "model/step" };
   }
   return {
-    data: serializeBambu3mf(items.filter(isGeom3), name),
+    data: serializeBambu3mf(solids, name),
     extension: "3mf",
     mimeType: "model/3mf",
   };

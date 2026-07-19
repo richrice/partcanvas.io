@@ -48,14 +48,34 @@ module hidden() { PRIVATE = 3; }
     expect(parameters[2].options).toHaveLength(2);
   });
 
-  it("only exposes ALL_CAPS top-level variables", () => {
+  it("exposes ALL_CAPS variables plus names with explicit customizer intent", () => {
     const parameters = extractParameters(`WIDTH = 40; // [10:1:80]
 width = 20; // [10:1:80]
 Mixed_Case = 5;
 helper_offset = WIDTH / 2;
+noted = 7; // uses the [Smith 2003] method
 $fn = 32;
 `);
-    expect(parameters.map((parameter) => parameter.name)).toEqual(["WIDTH"]);
+    // WIDTH is ALL_CAPS; width carries a parseable control annotation. Mixed_Case has
+    // no annotation or section, noted's bracket text is prose, helper_offset is not a
+    // literal — all three stay internal.
+    expect(parameters.map((parameter) => parameter.name)).toEqual(["WIDTH", "width"]);
+  });
+
+  it("exposes Title_case variables under named sections and reads colon-separated option lists", () => {
+    const parameters = extractParameters(`/* [Settings] */
+Material_type = "PLA"; // [PLA:PETG:ABS]
+Brand = "Creality";
+Hole = true; // [true:false]
+/* [Hidden] */
+width_mm = 30;
+`);
+    expect(parameters.map((parameter) => parameter.name)).toEqual(["Material_type", "Brand", "Hole"]);
+    expect(parameters[0].type).toBe("select");
+    expect(parameters[0].options?.map((option) => option.value)).toEqual(["PLA", "PETG", "ABS"]);
+    expect(parameters[1]).toMatchObject({ type: "string", section: "Settings" });
+    // Boolean option lists like [true:false] stay checkboxes.
+    expect(parameters[2].type).toBe("boolean");
   });
 
   it("extracts vector controls and excludes the Hidden section", () => {
@@ -156,6 +176,53 @@ describe("CAD compiler", () => {
     expect(result.metrics.dimensions?.slice(1)).toEqual([10, 10]);
     expect(result.metrics.volume).toBeCloseTo(1125, 4);
     expect(result.warnings).toEqual([]);
+  });
+
+  it("treats each boolean child node as one operand like OpenSCAD", () => {
+    // A for loop is a single child: every cube it yields is on the positive
+    // side of the difference. Reference volume from OpenSCAD 2026.02.
+    const forFirst = compileScad(`
+      difference() {
+        for (i = [0:1]) translate([i * 3, 0, 0]) cube(2);
+        translate([1, 1, -1]) cylinder(h = 6, r = 0.8, $fn = 16);
+      }
+    `);
+    expect(forFirst.metrics.volume).toBeCloseTo(12.08, 1);
+    // Children that yield no geometry are dropped; an empty first child does
+    // not turn the whole difference empty.
+    const emptyFirst = compileScad(`
+      difference() {
+        if (false) cube(3);
+        cube(5);
+        translate([1, 1, -1]) cube(2);
+      }
+    `);
+    expect(emptyFirst.metrics.volume).toBeCloseTo(121, 4);
+    // Each intersection child group is unioned before intersecting.
+    const forIntersect = compileScad(`
+      intersection() {
+        for (i = [0:1]) translate([i * 2, 0, 0]) cube(3);
+        translate([1, 1, 0]) cube(4);
+      }
+    `);
+    expect(forIntersect.metrics.volume).toBeCloseTo(24, 4);
+  });
+
+  it("keeps per-color parts through explicit union() and difference()", () => {
+    const result = compileScad(`
+      union() {
+        color("white") difference() {
+          cube([20, 20, 5]);
+          translate([2, 2, -1]) cube([4, 4, 7]);
+        }
+        color("black") translate([0, 0, 5]) cube([10, 10, 2]);
+      }
+    `);
+    expect(result.parts).toHaveLength(2);
+    const colorsOf = result.parts.map((part) => (part as { color?: number[] }).color);
+    expect(colorsOf).toContainEqual([1, 1, 1, 1]);
+    expect(colorsOf).toContainEqual([0, 0, 0, 1]);
+    expect(result.metrics.volume).toBeCloseTo(20 * 20 * 5 - 4 * 4 * 5 + 10 * 10 * 2, 4);
   });
 
   it("evaluates modules, children, loops, hull, and difference", () => {
@@ -534,7 +601,7 @@ describe("CAD compiler", () => {
     expect(printable.warnings).toEqual(["1 top-level 2D object ignored for 3D output."]);
   });
 
-  it("creates aligned printable text without a native font dependency", () => {
+  it("creates aligned text with the bundled Liberation Sans font", () => {
     const result = compileScad(`
       linear_extrude(height = 2)
         text("SCAD", size = 10, halign = "center", valign = "center", spacing = 1.1);
@@ -543,8 +610,31 @@ describe("CAD compiler", () => {
     expect(result.metrics.dimensions?.[0]).toBeGreaterThan(20);
     expect(result.metrics.dimensions?.[1]).toBeGreaterThan(8);
     expect(result.metrics.dimensions?.[2]).toBeCloseTo(2, 6);
-    expect(result.metrics.bounds?.min[0]).toBeCloseTo(-(result.metrics.dimensions?.[0] ?? 0) / 2, 5);
+    // halign="center" offsets by half the advance width like OpenSCAD, so the
+    // outline box is centered up to the first/last glyph side bearings.
+    const center = ((result.metrics.bounds?.min[0] ?? 0) + (result.metrics.bounds?.max[0] ?? 0)) / 2;
+    expect(Math.abs(center)).toBeLessThan(1);
     expect(result.warnings).toEqual([]);
+  });
+
+  it("matches OpenSCAD text metrics for the default font", () => {
+    // Reference values measured from OpenSCAD 2026.02 STL exports.
+    const single = compileScad(`linear_extrude(1) text("A", size = 10);`);
+    expect(single.metrics.bounds?.min[0]).toBeCloseTo(0.027, 2);
+    expect(single.metrics.bounds?.max[0]).toBeCloseTo(9.236, 2);
+    expect(single.metrics.bounds?.max[1]).toBeCloseTo(9.555, 2);
+    const bold = compileScad(`linear_extrude(1) text("PLA", size = 10, font = "Liberation Sans:style=Bold");`);
+    expect(bold.warnings).toEqual([]);
+    expect(bold.metrics.bounds?.min[0]).toBeCloseTo(0.929, 2);
+    expect(bold.metrics.bounds?.max[0]).toBeCloseTo(27.411, 2);
+    const descender = compileScad(`linear_extrude(1) text("Ag", size = 10, valign = "bottom");`);
+    expect(descender.metrics.bounds?.min[1]).toBeCloseTo(0, 1);
+  });
+
+  it("falls back to Liberation Sans for fonts that are not bundled", () => {
+    const result = compileScad(`linear_extrude(1) text("Hi", size = 8, font = "Comic Sans MS:style=Bold");`);
+    expect(result.geometry).not.toBeNull();
+    expect(result.warnings).toEqual(["Font 'Comic Sans MS:style=Bold' is not bundled; text() used Liberation Sans:style=Bold"]);
   });
 
   it.each(EXAMPLES)("compiles the $name example", (example) => {

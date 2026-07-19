@@ -12,7 +12,9 @@ import type { CompileWorkerRequest, CompileWorkerResponse } from "@/lib/compile-
 // plain objects of arrays), which is what makes the IDB tier possible.
 
 // Bump when engine semantics change enough that cached geometry would lie.
-const CACHE_VERSION = 1;
+// v2: real Liberation Sans text() outlines, color-preserving union(),
+// OpenSCAD child-node boolean semantics.
+const CACHE_VERSION = 2;
 const MEMORY_CAPACITY = 16;
 // Persist all but trivial compiles: users expect a refreshed model page to
 // load from cache, and even an ~80ms compile is a visible flash on top of

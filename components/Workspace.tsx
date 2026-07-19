@@ -260,7 +260,7 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
       setDownloadCount((count) => count + 1);
       void fetch(`/api/models/${social.modelId}/download`, { method: "POST", keepalive: true }).catch(() => undefined);
     }
-    const serialized = serializeGeometry(effectiveExportFormat === "3mf" ? result.parts : result.geometry, effectiveExportFormat, modelName || "partcanvas-model");
+    const serialized = serializeGeometry(result.parts.length ? result.parts : result.geometry, effectiveExportFormat, modelName || "partcanvas-model");
     const data = serialized.data;
     const blob = new Blob([data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer], { type: serialized.mimeType });
     const url = URL.createObjectURL(blob);
