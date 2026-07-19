@@ -85,6 +85,27 @@ INTERNAL_EPSILON = 0.01;
     expect(ratio.step).toBeCloseTo(0.01, 8);
   });
 
+  it("leaves count-like parameters unitless and lengths in millimeters", () => {
+    const parameters = extractParameters(`COLUMNS = 4; // [1:1:10]
+ROWS = 3; // [1:1:10]
+NUM_STEPS = 5;
+TABS_PER_SIDE = 2;
+SEGMENT_INDEX = 0;
+WIDTH = 40;
+ANGLE = 30;
+`);
+    const units = Object.fromEntries(parameters.map((parameter) => [parameter.name, parameter.unit]));
+    expect(units).toEqual({
+      COLUMNS: "",
+      ROWS: "",
+      NUM_STEPS: "",
+      TABS_PER_SIDE: "",
+      SEGMENT_INDEX: "",
+      WIDTH: "mm",
+      ANGLE: "°",
+    });
+  });
+
   it("recognizes exposed string and RGB color parameters", () => {
     const parameters = extractParameters(`
 BODY = "navy";

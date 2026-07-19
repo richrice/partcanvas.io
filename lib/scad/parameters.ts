@@ -96,7 +96,7 @@ export function extractParameters(source: string): ModelParameter[] {
           if (typeof defaultValue === "number") {
             parameter.unit = /angle|rotate|rotation|twist/i.test(name)
               ? "°"
-              : /count|copies|quantity|segments|facets|quality|resolution/i.test(name) ? "" : "mm";
+              : /count|copies|quantity|segments|facets|quality|resolution|rows|columns|cols|steps|index|(?:^|_)per(?:_|$)/i.test(name) ? "" : "mm";
           }
           if (controlMatch) {
             const control = controlMatch[1].trim();
