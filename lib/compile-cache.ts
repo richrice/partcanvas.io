@@ -14,7 +14,11 @@ import type { CompileWorkerRequest, CompileWorkerResponse } from "@/lib/compile-
 // Bump when engine semantics change enough that cached geometry would lie.
 const CACHE_VERSION = 1;
 const MEMORY_CAPACITY = 16;
-const PERSIST_MIN_COMPILE_MS = 250;
+// Persist all but trivial compiles: users expect a refreshed model page to
+// load from cache, and even an ~80ms compile is a visible flash on top of
+// worker spawn and debounce. Only compiles cheaper than a storage round-trip
+// are excluded.
+const PERSIST_MIN_COMPILE_MS = 25;
 const PERSIST_MAX_ENTRIES = 24;
 const PERSIST_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 const DB_NAME = "partcanvas-compile-cache";

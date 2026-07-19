@@ -226,8 +226,13 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
     ? (["svg", "dxf"].includes(exportFormat) ? exportFormat : "svg")
     : (["stl", "obj", "3mf", "step"].includes(exportFormat) ? exportFormat : "stl");
 
+  // The debounce exists to coalesce keystrokes; the first compile of a page
+  // view has nothing to coalesce, and delaying it just adds to the time
+  // before a (possibly cached) model appears.
+  const firstCompile = useRef(true);
   useEffect(() => {
-    const timeout = window.setTimeout(compile, 320);
+    const timeout = window.setTimeout(compile, firstCompile.current ? 0 : 320);
+    firstCompile.current = false;
     // The local draft belongs to /new only — hosted model pages must never
     // overwrite it just because they were viewed.
     if (!initialModel) {
