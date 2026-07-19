@@ -166,6 +166,16 @@ export function ParameterPanel({ parameters, values, presets = [], selectedPrese
                         />
                       ))}
                     </div>
+                  ) : parameter.type === "number" ? (
+                    // Numbers without a [min:max] annotation still need numeric
+                    // input — the text fallback would feed the engine a string.
+                    <input
+                      className="number-input"
+                      type="number"
+                      step={parameter.step}
+                      value={Number(value)}
+                      onChange={(event) => changeNumber(event.target.value, (numeric) => onChange(parameter.name, numeric))}
+                    />
                   ) : (
                     <input className="text-input" value={String(value)} onChange={(event) => onChange(parameter.name, event.target.value)} />
                   )}
