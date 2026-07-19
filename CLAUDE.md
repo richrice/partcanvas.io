@@ -23,7 +23,7 @@ Requires Node >= 24. Tests are colocated with source (`*.test.ts` next to the fi
 
 ## What this is
 
-A native TypeScript reimplementation of the OpenSCAD modeling workflow — parser, evaluator, and exporters — with no OpenSCAD binary, Emscripten, or WASM. The **same engine runs in two places**: client-side in the browser for live preview, and server-side behind the HTTP render API. Engine code must therefore stay isomorphic: nothing under `lib/scad/`, `lib/share.ts`, or `lib/project-assets.ts` may import Node built-ins. Server-only code uses the `.server.ts` suffix (e.g. `lib/models/revisions.server.ts`).
+A native TypeScript reimplementation of the OpenSCAD modeling workflow — parser, evaluator, and exporters — with no OpenSCAD binary, Emscripten, or WASM. The **same engine runs everywhere**: client-side for live preview — normally inside a Web Worker (`lib/compile-worker.ts`), with a synchronous main-thread fallback — and server-side behind the HTTP render API. Engine code must therefore stay isomorphic: nothing under `lib/scad/`, `lib/share.ts`, or `lib/project-assets.ts` may import Node built-ins or touch the DOM. Server-only code uses the `.server.ts` suffix (e.g. `lib/models/revisions.server.ts`).
 
 Compatibility is deliberately measured against real OpenSCAD behavior (CLI flags, Customizer JSON, `--summary` output, string-encoded parameter values). When expanding the language surface, match OpenSCAD semantics and update the README's "Current language surface" section — the README doubles as the feature spec and public API documentation.
 
@@ -45,7 +45,7 @@ Alongside the pipeline:
 
 ## App structure
 
-- `components/Workspace.tsx` — the main client component; owns all editor/parameter/compile state and calls `compileScad` directly in the browser. Composes `CodeEditor` (CodeMirror), `ModelViewport` (three.js), and `ParameterPanel`.
+- `components/Workspace.tsx` — the main client component; owns all editor/parameter/compile state and compiles through `lib/compile-cache.ts` (memory + IndexedDB cache over a Web Worker running `compileScad`; falls back to synchronous main-thread compile where workers are unavailable). Composes `CodeEditor` (CodeMirror), `ModelViewport` (three.js), and `ParameterPanel`.
 - `app/page.tsx` renders an empty Workspace; `app/m/[id]/page.tsx` reads a hosted model server-side and passes it as `initialModel`.
 - `app/api/` — Node-runtime routes: `render` (script → STL/OBJ/3MF/STEP/SVG/DXF or `--summary`-style JSON), `parameters`, `models` (publish/fetch), `health`, `capabilities`. CORS is wide open via `next.config.ts` headers plus `lib/api/cors.ts` preflight; new API routes need `export const OPTIONS = corsPreflight`.
 - Hosted-model storage: published models are immutable content-addressed **revisions** (24-hex sha256-derived ID) stored in Postgres. `lib/db/` holds the Drizzle schema (`schema.ts`), the pg/PGlite client seam (`client.server.ts`, with `setDatabaseForTests`), and the PGlite test harness (`test-db.server.ts`); migrations live in `drizzle/` and run at boot via `instrumentation.ts` when `DATABASE_URL` is set (without it the app runs engine-only). `lib/models/revisions.server.ts` is the revision store (`ON CONFLICT DO NOTHING` dedup); `lib/models/models.server.ts` is the social layer (models, versions, forks, explore); draft validation/hashing sits in `lib/models/draft.server.ts`.

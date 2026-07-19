@@ -34,9 +34,10 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AuthMenu } from "./AuthMenu";
 import { CodeEditor, type CursorLocation } from "./CodeEditor";
-import { ModelViewport } from "./ModelViewport";
+import { ModelViewport, type ViewPreset } from "./ModelViewport";
 import { ParameterPanel } from "./ParameterPanel";
-import { compileScad, serializeGeometry, type CompileResult, type ExportFormat } from "@/lib/scad/compiler";
+import { compileScadCached, CompileSupersededError, type CompileCacheTier } from "@/lib/compile-cache";
+import { serializeGeometry, type CompileResult, type ExportFormat } from "@/lib/scad/compiler";
 import { DEFAULT_SOURCE, EXAMPLES } from "@/lib/scad/examples";
 import { defaultParameterValues, extractParameters, type ParameterValue } from "@/lib/scad/parameters";
 import { extensionOf, isEditableProjectFile, readProjectFile } from "@/lib/project-assets";
@@ -119,7 +120,13 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
   const [compiling, setCompiling] = useState(true);
   const [wireframe, setWireframe] = useState(false);
   const [autoRotate, setAutoRotate] = useState(false);
-  const [fitViewRequest, setFitViewRequest] = useState(0);
+  const [viewRequest, setViewRequest] = useState<{ view: ViewPreset; nonce: number }>({ view: "perspective", nonce: 0 });
+  const chooseView = (view: ViewPreset) => setViewRequest((current) => ({ view, nonce: current.nonce + 1 }));
+  // Manual orbiting (or auto-rotate) leaves any standard view, so the tab bar
+  // falls back to highlighting Perspective instead of lying about the camera.
+  const leaveStandardView = useCallback(() => {
+    setViewRequest((current) => current.view === "perspective" ? current : { view: "perspective", nonce: 0 });
+  }, []);
   const [showExamples, setShowExamples] = useState(false);
   const [exportFormat, setExportFormat] = useState<ExportFormat>("stl");
   const [mobilePanel, setMobilePanel] = useState<"code" | "preview" | "parameters">("preview");
@@ -188,17 +195,31 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
     return () => window.clearTimeout(timeout);
   }, [initialModel]);
 
+  // Compiles resolve asynchronously (the cache's persistent tier is async),
+  // so a run counter drops stale completions when the source or parameters
+  // changed again mid-flight.
+  const compileRun = useRef(0);
+  const [resultFromCache, setResultFromCache] = useState<CompileCacheTier>(false);
   const compile = useCallback(() => {
+    const run = ++compileRun.current;
     setCompiling(true);
-    try {
-      const next = compileScad(source, { parameters, files: projectFiles, outputDimension: "auto" });
-      setResult(next);
-      setError(next.geometry ? null : "The script did not produce geometry.");
-    } catch (compileError) {
-      setError(compileError instanceof Error ? compileError.message : "Compilation failed");
-    } finally {
-      setCompiling(false);
-    }
+    void compileScadCached(source, { parameters, files: projectFiles, outputDimension: "auto" })
+      .then(({ result: next, fromCache }) => {
+        if (run !== compileRun.current) return;
+        setResult(next);
+        setResultFromCache(fromCache);
+        setError(next.geometry ? null : "The script did not produce geometry.");
+      })
+      .catch((compileError: unknown) => {
+        if (run !== compileRun.current) return;
+        // A superseded compile means a newer run owns the UI state already.
+        if (compileError instanceof CompileSupersededError) return;
+        setResultFromCache(false);
+        setError(compileError instanceof Error ? compileError.message : "Compilation failed");
+      })
+      .finally(() => {
+        if (run === compileRun.current) setCompiling(false);
+      });
   }, [source, parameters, projectFiles]);
 
   const effectiveExportFormat: ExportFormat = result?.dimension === 2
@@ -488,6 +509,36 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deletingModel, setDeletingModel] = useState(false);
 
+  // Popovers close on outside click and Escape; dialogs close on Escape.
+  // (Backdrop clicks already close the dialogs via their overlay handlers.)
+  const anyMenuOpen = showExamples || showVersions || showForks || showReport;
+  useEffect(() => {
+    if (!anyMenuOpen) return;
+    const close = (event: MouseEvent) => {
+      if ((event.target as Element | null)?.closest?.(".example-picker")) return;
+      setShowExamples(false);
+      setShowVersions(false);
+      setShowForks(false);
+      setShowReport(false);
+    };
+    window.addEventListener("mousedown", close);
+    return () => window.removeEventListener("mousedown", close);
+  }, [anyMenuOpen]);
+  useEffect(() => {
+    if (!anyMenuOpen && !showPublishDialog && !showEditDialog) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setShowExamples(false);
+      setShowVersions(false);
+      setShowForks(false);
+      setShowReport(false);
+      setShowPublishDialog(false);
+      setShowEditDialog(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [anyMenuOpen, showPublishDialog, showEditDialog]);
+
   const openEditDialog = () => {
     if (!social) return;
     setEditTitle(social.title);
@@ -610,7 +661,14 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
           <a className="ghost-button docs-button api-link" href="/docs/api"><Code2 size={15} /> API</a>
           <a className="icon-button github-link" href="https://github.com/richrice/partcanvas.io" target="_blank" rel="noreferrer" aria-label="partcanvas.io source code on GitHub"><Github size={17} /></a>
           <button className="ghost-button share-button" onClick={shareModel}><Share2 size={15} /> Share</button>
-          <button className="ghost-button publish-button" onClick={publishModel} disabled={!result?.geometry || result.dimension !== 3 || compiling || publishing}><CloudUpload size={15} /> {publishing ? "Publishing…" : "Publish"}</button>
+          <button
+            className="ghost-button publish-button"
+            onClick={publishModel}
+            disabled={!result?.geometry || result.dimension !== 3 || compiling || publishing}
+            title={result?.dimension === 2
+              ? "2D sketches can be shared and exported, but only 3D models can be published"
+              : result?.geometry ? "Publish to the community gallery" : "Fix the script so it produces geometry, then publish"}
+          ><CloudUpload size={15} /> {publishing ? "Publishing…" : "Publish"}</button>
           <button className="primary-button" onClick={downloadModel} disabled={!result?.geometry || compiling}>
             <Download size={16} /> Export {effectiveExportFormat.toUpperCase()}
           </button>
@@ -834,22 +892,26 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
           <div className="editor-statusbar">
             <span><Check size={12} /> OpenSCAD compatible</span>
             <span>Ln {cursorLocation.line}, Col {cursorLocation.column}</span>
-            <span>Spaces: 2</span>
-            <span>UTF-8</span>
           </div>
         </div>
 
         <div className={`workspace-panel preview-panel ${mobilePanel === "preview" ? "mobile-active" : ""}`}>
           <div className="panel-toolbar preview-toolbar">
-            <div className="view-tabs"><button className="active"><Box size={14} /> Perspective</button><button>Top</button><button>Front</button><button>Right</button></div>
+            <div className="view-tabs">
+              {(["perspective", "top", "front", "right"] as const).map((view) => (
+                <button key={view} className={viewRequest.view === view ? "active" : ""} onClick={() => chooseView(view)}>
+                  {view === "perspective" ? <><Box size={14} /> Perspective</> : view[0].toUpperCase() + view.slice(1)}
+                </button>
+              ))}
+            </div>
             <div className="toolbar-actions">
               <button className={wireframe ? "active-tool" : ""} onClick={() => setWireframe((value) => !value)} title="Toggle wireframe"><Braces size={15} /></button>
-              <button className={autoRotate ? "active-tool" : ""} onClick={() => setAutoRotate((value) => !value)} title="Auto rotate"><Rotate3D size={15} /></button>
-              <button title="Fit view" onClick={() => setFitViewRequest((request) => request + 1)}><Maximize2 size={15} /></button>
+              <button className={autoRotate ? "active-tool" : ""} onClick={() => { setAutoRotate((value) => !value); leaveStandardView(); }} title="Auto rotate"><Rotate3D size={15} /></button>
+              <button title="Fit view" onClick={() => chooseView(viewRequest.view)}><Maximize2 size={15} /></button>
             </div>
           </div>
           <div className="viewport-wrap">
-            <ModelViewport geometries={result?.parts ?? []} wireframe={wireframe} autoRotate={autoRotate} fitViewRequest={fitViewRequest} captureRef={thumbnailCaptureRef} />
+            <ModelViewport geometries={result?.parts ?? []} wireframe={wireframe} autoRotate={autoRotate} viewRequest={viewRequest} onUserOrbit={leaveStandardView} captureRef={thumbnailCaptureRef} />
             <div className={`render-status ${error ? "error" : ""}`}>
               {compiling ? <><LoaderCircle className="spinner" size={14} /> Compiling…</> : error ? <><TriangleAlert size={14} /> {error}</> : <><span className="status-dot" /> Ready</>}
             </div>
@@ -859,7 +921,7 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
                 <strong>{result?.dimension === 2 ? `${format(dimensions[0])} × ${format(dimensions[1])}` : `${format(dimensions[0])} × ${format(dimensions[1])} × ${format(dimensions[2])}`} <small>mm</small></strong>
               </div>
             )}
-            <div className="viewport-hint">Drag to orbit · Scroll to zoom · Shift + drag to pan</div>
+            <div className="viewport-hint">Drag to orbit · Scroll to zoom · Right-drag to pan</div>
           </div>
           <div className="console-panel">
             <div className="console-header">
@@ -867,12 +929,14 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
               <span className={error ? "console-errors" : "console-clear"}>{error ? "1 error" : result?.warnings.length ? `${result.warnings.length} warning${result.warnings.length === 1 ? "" : "s"}` : "No errors"}</span>
               <span className="console-spacer" />
               {result?.metrics.triangles ? <span>{result.metrics.triangles.toLocaleString()} triangles</span> : null}
-              {result?.metrics.compileMs !== undefined ? <span>{result.metrics.compileMs.toFixed(0)} ms</span> : null}
+              {result?.metrics.compileMs !== undefined ? <span>{resultFromCache ? "cached" : `${result.metrics.compileMs.toFixed(0)} ms`}</span> : null}
             </div>
             <div className="console-body">
               {error ? <div className="console-line error-line"><TriangleAlert size={13} />{error}</div> : null}
               {consoleItems.map((item, index) => <div className={`console-line ${item.kind}`} key={`${item.text}-${index}`}>{item.kind === "warning" ? "WARNING:" : "ECHO:"} {item.text}</div>)}
-              {!error && !consoleItems.length && <div className="console-line success-line"><Check size={13} /> Model compiled successfully. Ready to export.</div>}
+              {!error && !consoleItems.length && (result && !compiling
+                ? <div className="console-line success-line"><Check size={13} /> Model compiled successfully. Ready to export.</div>
+                : <div className="console-line"><LoaderCircle className="spinner" size={13} /> Compiling…</div>)}
             </div>
           </div>
         </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { Box, Download, Eye, EyeOff, Heart, Lock, MessageSquare } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import type { Visibility } from "@/lib/models/types";
 import { relativeTime } from "@/lib/relative-time";
@@ -21,7 +22,7 @@ export interface ModelCardProps {
 export function ModelCard({ href, title, author, likeCount, downloadCount, commentCount, viewCount, createdAt, thumbnailUrl, visibility }: ModelCardProps) {
   const [thumbnailFailed, setThumbnailFailed] = useState(false);
   return (
-    <a className="model-card" href={href}>
+    <Link className="model-card" href={href}>
       <span className="model-card-thumb">
         {thumbnailFailed
           ? <Box size={34} strokeWidth={1.4} />
@@ -41,6 +42,6 @@ export function ModelCard({ href, title, author, likeCount, downloadCount, comme
           {createdAt ? <span className="model-card-date" suppressHydrationWarning title={new Date(createdAt).toLocaleString()}>{relativeTime(createdAt)}</span> : null}
         </span>
       </span>
-    </a>
+    </Link>
   );
 }

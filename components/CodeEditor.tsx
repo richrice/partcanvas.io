@@ -28,7 +28,7 @@ const editorTheme = EditorView.theme({
     height: "100%",
     backgroundColor: "#171a17",
     color: "#d7ddd6",
-    fontSize: "11.5px",
+    fontSize: "12.5px",
   },
   "&.cm-focused": { outline: "none" },
   ".cm-scroller": {
@@ -53,7 +53,7 @@ const editorTheme = EditorView.theme({
     minWidth: "42px",
     height: "20px",
     padding: "0 11px 0 8px",
-    fontSize: "11px",
+    fontSize: "11.5px",
     lineHeight: "20px",
   },
   ".cm-activeLine": { backgroundColor: "#1b201b" },
@@ -83,7 +83,7 @@ const editorTheme = EditorView.theme({
   },
   ".cm-tooltip-autocomplete > ul": {
     fontFamily: "var(--font-mono)",
-    fontSize: "11px",
+    fontSize: "12px",
   },
   ".cm-tooltip-autocomplete > ul > li": { padding: "3px 8px" },
   ".cm-tooltip-autocomplete > ul > li[aria-selected]": {

@@ -7,11 +7,16 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { Geom3 } from "@jscad/modeling/src/geometries/types";
 import { isGeom2, isGeom3, type CadGeometry } from "@/lib/scad/evaluator";
 
+export type ViewPreset = "perspective" | "top" | "front" | "right";
+
 interface ModelViewportProps {
   geometries: CadGeometry[];
   wireframe: boolean;
   autoRotate: boolean;
-  fitViewRequest: number;
+  viewRequest?: { view: ViewPreset; nonce: number };
+  // Fired when the user starts orbiting manually, so a selected standard view
+  // (Top/Front/Right) can stop claiming to be active.
+  onUserOrbit?: () => void;
   // Receives a PNG-capture function while the viewport is mounted (P3.1
   // thumbnails). Returns a data URL ≤ 512 KB, or null with nothing to render.
   captureRef?: React.RefObject<(() => string | null) | null>;
@@ -81,14 +86,25 @@ function createBufferGeometry(sources: Geom3[]) {
   return output;
 }
 
-function fitView(current: ViewportState) {
+// Camera offsets (in units of the fit radius) for the standard CAD views. The
+// top view keeps a slight Y offset so the Z-up orbit controls never hit the
+// gimbal pole exactly.
+const VIEW_OFFSETS: Record<ViewPreset, [number, number, number]> = {
+  perspective: [1, -1.3, 1],
+  top: [0, -0.03, 1.6],
+  front: [0, -1.6, 0],
+  right: [1.6, 0, 0],
+};
+
+function fitView(current: ViewportState, view: ViewPreset = "perspective") {
   const box = current.mesh?.geometry.boundingBox;
   if (!box) return;
   const center = box.getCenter(new THREE.Vector3());
   const size = box.getSize(new THREE.Vector3());
   const radius = Math.max(size.length() * 1.12, 14);
+  const offset = VIEW_OFFSETS[view];
   current.controls.target.copy(center);
-  current.camera.position.copy(center).add(new THREE.Vector3(radius, -radius * 1.3, radius));
+  current.camera.position.copy(center).add(new THREE.Vector3(radius * offset[0], radius * offset[1], radius * offset[2]));
   current.camera.near = Math.max(radius / 1000, 0.05);
   current.camera.far = radius * 40;
   current.camera.updateProjectionMatrix();
@@ -104,10 +120,14 @@ function fitView(current: ViewportState) {
   current.hasFitModel = true;
 }
 
-export function ModelViewport({ geometries: sourceGeometries, wireframe, autoRotate, fitViewRequest, captureRef }: ModelViewportProps) {
+export function ModelViewport({ geometries: sourceGeometries, wireframe, autoRotate, viewRequest, onUserOrbit, captureRef }: ModelViewportProps) {
   const container = useRef<HTMLDivElement>(null);
   const state = useRef<ViewportState | null>(null);
   const wireframeSetting = useRef(wireframe);
+  const onUserOrbitRef = useRef(onUserOrbit);
+  useEffect(() => {
+    onUserOrbitRef.current = onUserOrbit;
+  }, [onUserOrbit]);
 
   useEffect(() => {
     if (!container.current) return;
@@ -133,6 +153,8 @@ export function ModelViewport({ geometries: sourceGeometries, wireframe, autoRot
     controls.target.set(0, 0, 12);
     controls.minDistance = 8;
     controls.maxDistance = 800;
+    const notifyUserOrbit = () => onUserOrbitRef.current?.();
+    controls.addEventListener("start", notifyUserOrbit);
 
     scene.add(new THREE.HemisphereLight(0xdde8de, 0x31362e, 2.25));
     const key = new THREE.DirectionalLight(0xffffff, 3.4);
@@ -177,6 +199,7 @@ export function ModelViewport({ geometries: sourceGeometries, wireframe, autoRot
     return () => {
       cancelAnimationFrame(frame);
       observer.disconnect();
+      controls.removeEventListener("start", notifyUserOrbit);
       controls.dispose();
       renderer.dispose();
       renderer.domElement.remove();
@@ -225,8 +248,8 @@ export function ModelViewport({ geometries: sourceGeometries, wireframe, autoRot
   }, [sourceGeometries]);
 
   useEffect(() => {
-    if (fitViewRequest > 0 && state.current?.mesh) fitView(state.current);
-  }, [fitViewRequest]);
+    if (viewRequest && viewRequest.nonce > 0 && state.current?.mesh) fitView(state.current, viewRequest.view);
+  }, [viewRequest]);
 
   return <div ref={container} className="model-viewport" aria-label="Interactive 3D model preview" />;
 }

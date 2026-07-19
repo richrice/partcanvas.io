@@ -79,7 +79,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
         {results.models.length === 0 ? (
           <p className="page-empty">
             {q || tag
-              ? <>No models found{q ? <> for &ldquo;{q}&rdquo;</> : null}{tag ? <> tagged #{tag}</> : null}.</>
+              ? <>No models found{q ? <> for &ldquo;{q}&rdquo;</> : null}{tag ? <> tagged #{tag}</> : null}. <Link href="/">Browse all models</Link></>
               : <>No published models yet — <Link href="/new">be the first</Link>.</>}
           </p>
         ) : (
@@ -101,11 +101,13 @@ export default async function HomePage({ searchParams }: HomePageProps) {
             ))}
           </section>
         )}
-        <nav className="explore-pagination" aria-label="Pagination">
-          {page > 1 ? <Link className="ghost-button" href={galleryHref({ q, tag, sort, page: page - 1 })}>← Previous</Link> : <span />}
-          {(page > 1 || results.hasMore) ? <span className="explore-page-indicator">Page {page}</span> : null}
-          {results.hasMore ? <Link className="ghost-button" href={galleryHref({ q, tag, sort, page: page + 1 })}>Next →</Link> : <span />}
-        </nav>
+        {(page > 1 || results.hasMore) && (
+          <nav className="explore-pagination" aria-label="Pagination">
+            {page > 1 ? <Link className="ghost-button" href={galleryHref({ q, tag, sort, page: page - 1 })}>← Previous</Link> : <span />}
+            <span className="explore-page-indicator">Page {page}</span>
+            {results.hasMore ? <Link className="ghost-button" href={galleryHref({ q, tag, sort, page: page + 1 })}>Next →</Link> : <span />}
+          </nav>
+        )}
       </main>
     </div>
   );

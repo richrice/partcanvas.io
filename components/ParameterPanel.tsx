@@ -2,6 +2,7 @@
 
 import { ChevronDown, RotateCcw, SlidersHorizontal } from "lucide-react";
 import { colors } from "@jscad/modeling";
+import { useState } from "react";
 import type { ModelParameter, ParameterValue } from "@/lib/scad/parameters";
 
 interface ParameterPanelProps {
@@ -28,10 +29,18 @@ function colorHex(value: ParameterValue, fallback: ParameterValue) {
 }
 
 export function ParameterPanel({ parameters, values, presets = [], selectedPreset = "", onChange, onPresetChange, onReset }: ParameterPanelProps) {
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const groups = parameters.reduce<Record<string, ModelParameter[]>>((output, parameter) => {
     (output[parameter.section] ??= []).push(parameter);
     return output;
   }, {});
+  // Intermediate typing states ("", "-", "1e") must not reach the model as 0
+  // or NaN — the preview would silently collapse mid-edit.
+  const changeNumber = (raw: string, apply: (numeric: number) => void) => {
+    if (raw.trim() === "") return;
+    const numeric = Number(raw);
+    if (Number.isFinite(numeric)) apply(numeric);
+  };
 
   return (
     <div className="parameter-panel">
@@ -68,7 +77,13 @@ export function ParameterPanel({ parameters, values, presets = [], selectedPrese
       )}
       {Object.entries(groups).map(([section, items]) => (
         <section className="parameter-group" key={section}>
-          <div className="group-title"><span>{section}</span><ChevronDown size={14} /></div>
+          <button
+            type="button"
+            className={`group-title ${collapsed[section] ? "collapsed" : ""}`}
+            aria-expanded={!collapsed[section]}
+            onClick={() => setCollapsed((current) => ({ ...current, [section]: !current[section] }))}
+          ><span>{section}</span><ChevronDown className="group-chevron" size={14} /></button>
+          {collapsed[section] ? null : (
           <div className="parameter-list">
             {items.map((parameter) => {
               const value = values[parameter.name] ?? parameter.defaultValue;
@@ -99,7 +114,7 @@ export function ParameterPanel({ parameters, values, presets = [], selectedPrese
                         max={parameter.max}
                         step={parameter.step}
                         value={Number(value)}
-                        onChange={(event) => onChange(parameter.name, Number(event.target.value))}
+                        onChange={(event) => changeNumber(event.target.value, (numeric) => onChange(parameter.name, numeric))}
                       />
                     </div>
                   ) : parameter.type === "boolean" ? (
@@ -143,11 +158,11 @@ export function ParameterPanel({ parameters, values, presets = [], selectedPrese
                           max={parameter.max}
                           step={parameter.step}
                           value={component}
-                          onChange={(event) => {
+                          onChange={(event) => changeNumber(event.target.value, (numeric) => {
                             const next = [...vector];
-                            next[index] = Number(event.target.value);
+                            next[index] = numeric;
                             onChange(parameter.name, next);
-                          }}
+                          })}
                         />
                       ))}
                     </div>
@@ -158,6 +173,7 @@ export function ParameterPanel({ parameters, values, presets = [], selectedPrese
               );
             })}
           </div>
+          )}
         </section>
       ))}
     </div>
