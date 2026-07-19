@@ -106,6 +106,18 @@ ANGLE = 30;
     });
   });
 
+  it("honors same-line comment unit overrides and strips them from descriptions", () => {
+    const parameters = extractParameters(`STUD_SPAN = 40; // Span across studs (none) [8:8:160]
+TILT = 3; // Extra tilt (deg)
+COUNT_WIDTH = 12; // Width of the counter face (mm)
+SPACING = 8; // Gap between pins (board width = COLUMNS * 40mm)
+`);
+    expect(parameters[0]).toMatchObject({ name: "STUD_SPAN", unit: "", description: "Span across studs", min: 8, max: 160 });
+    expect(parameters[1]).toMatchObject({ name: "TILT", unit: "°", description: "Extra tilt" });
+    expect(parameters[2]).toMatchObject({ name: "COUNT_WIDTH", unit: "mm", description: "Width of the counter face" });
+    expect(parameters[3]).toMatchObject({ name: "SPACING", unit: "mm", description: "Gap between pins (board width = COLUMNS * 40mm)" });
+  });
+
   it("recognizes exposed string and RGB color parameters", () => {
     const parameters = extractParameters(`
 BODY = "navy";

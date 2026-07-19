@@ -83,7 +83,12 @@ export function extractParameters(source: string): ModelParameter[] {
         const defaultValue = parseLiteral(rawValue);
         if (defaultValue !== undefined && CONTROLLABLE_NAME.test(name) && section.toLowerCase() !== "hidden") {
           const controlMatch = rawComment.match(/\[([^\]]+)]/);
-          const prose = rawComment.replace(/\s*\[[^\]]+]\s*/, "").trim();
+          let prose = rawComment.replace(/\s*\[[^\]]+]\s*/, "").trim();
+          // A standalone parenthesized unit token in the same-line comment
+          // overrides the name-based unit inference, e.g. `// Stud span (none)`
+          // or `// Extra tilt (deg)`. The token is removed from the description.
+          const unitOverride = prose.match(/(?:^|\s)\((mm|°|deg|degrees|none|unitless|count)\)(?=\s|$)/i);
+          if (unitOverride) prose = prose.replace(unitOverride[0], " ").replace(/\s+/g, " ").trim();
           const parameter: ModelParameter = {
             name,
             label: titleCase(name),
@@ -94,9 +99,12 @@ export function extractParameters(source: string): ModelParameter[] {
             line: lineIndex + 1,
           };
           if (typeof defaultValue === "number") {
-            parameter.unit = /angle|rotate|rotation|twist/i.test(name)
-              ? "°"
-              : /count|copies|quantity|segments|facets|quality|resolution|rows|columns|cols|steps|index|(?:^|_)per(?:_|$)/i.test(name) ? "" : "mm";
+            const token = unitOverride?.[1].toLowerCase();
+            parameter.unit = token
+              ? (token === "mm" ? "mm" : token === "°" || token.startsWith("deg") ? "°" : "")
+              : /angle|rotate|rotation|twist/i.test(name)
+                ? "°"
+                : /count|copies|quantity|segments|facets|quality|resolution|rows|columns|cols|steps|index|(?:^|_)per(?:_|$)/i.test(name) ? "" : "mm";
           }
           if (controlMatch) {
             const control = controlMatch[1].trim();
