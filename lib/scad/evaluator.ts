@@ -71,6 +71,29 @@ class Environment {
 const deg = (value: number) => (value * Math.PI) / 180;
 const num = (value: ScadValue, fallback = 0) => typeof value === "number" && Number.isFinite(value) ? value : fallback;
 const bool = (value: ScadValue) => Array.isArray(value) ? value.length > 0 : Boolean(value);
+const OPENSCAD_NUMBER_PRECISION = 6;
+
+function scadNumberString(value: number): string {
+  if (Number.isNaN(value)) return "nan";
+  if (value === Infinity) return "inf";
+  if (value === -Infinity) return "-inf";
+  if (value === 0) return "0";
+
+  const [rawCoefficient, exponent] = value.toPrecision(OPENSCAD_NUMBER_PRECISION).split("e");
+  const coefficient = rawCoefficient.includes(".")
+    ? rawCoefficient.replace(/0+$/, "").replace(/\.$/, "")
+    : rawCoefficient;
+  return exponent === undefined ? coefficient : `${coefficient}e${exponent}`;
+}
+
+function scadValueString(value: ScadValue, quoteString = false): string {
+  if (typeof value === "number") return scadNumberString(value);
+  if (typeof value === "string") return quoteString ? `"${value}"` : value;
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (value === null) return "undef";
+  return `[${value.map((item) => scadValueString(item, true)).join(", ")}]`;
+}
+
 const vector = (value: ScadValue, length: number, fallback = 0): number[] => {
   const values = Array.isArray(value) ? value.map((item) => num(item, fallback)) : [num(value, fallback)];
   return Array.from({ length }, (_, index) => values[index] ?? values[values.length - 1] ?? fallback);
@@ -398,7 +421,7 @@ export function evaluate(
       case "max": return Math.max(...numbers);
       case "len": return Array.isArray(first) || typeof first === "string" ? first.length : 0;
       case "norm": return Math.hypot(...numbers);
-      case "str": return values.map((value) => Array.isArray(value) ? `[${value.join(", ")}]` : String(value ?? "undef")).join("");
+      case "str": return values.map((value) => scadValueString(value)).join("");
       case "concat": return values.flatMap((value) => Array.isArray(value) ? value : [value]);
       case "cross": {
         const a = vector(first, 3);

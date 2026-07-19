@@ -274,6 +274,21 @@ describe("CAD compiler", () => {
     expect(result.messages).toEqual(["12"]);
   });
 
+  it("formats str() values with OpenSCAD's real-number precision", () => {
+    const result = compileScad(`
+      echo(
+        str(-3 * 0.05), str(-2 * 0.05), str(-1 * 0.05),
+        str(1 * 0.05), str(2 * 0.05), str(3 * 0.05),
+        str(1.000002), str(123456.789), str(0.000000123456789),
+        str(1000000), str(-0), str([0.1 + 0.2, [true, undef, "x"]])
+      );
+      cube(1);
+    `);
+    expect(result.messages).toEqual([
+      '-0.15 -0.1 -0.05 0.05 0.1 0.15 1 123457 1.23457e-7 1e+6 0 [0.3, [true, undef, "x"]]',
+    ]);
+  });
+
   it("supports nested module and function definitions", () => {
     const result = compileScad(`
       module outer(base) {
