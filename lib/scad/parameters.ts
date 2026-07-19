@@ -37,8 +37,12 @@ function parseLiteral(raw: string): ParameterValue | undefined {
   return undefined;
 }
 
+// Only ALL_CAPS top-level variables (letters, digits, underscores; no lowercase) are exposed as
+// customizable parameters — lowercase variables stay internal to the script.
+const CONTROLLABLE_NAME = /^[A-Z][A-Z0-9_]*$/;
+
 function titleCase(name: string) {
-  return name.replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+  return name.toLowerCase().replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 export function extractParameters(source: string): ModelParameter[] {
@@ -77,7 +81,7 @@ export function extractParameters(source: string): ModelParameter[] {
         matchedAssignment = true;
         const [, name, rawValue, rawComment = ""] = assignment;
         const defaultValue = parseLiteral(rawValue);
-        if (defaultValue !== undefined && !name.startsWith("$") && section.toLowerCase() !== "hidden") {
+        if (defaultValue !== undefined && CONTROLLABLE_NAME.test(name) && section.toLowerCase() !== "hidden") {
           const controlMatch = rawComment.match(/\[([^\]]+)]/);
           const prose = rawComment.replace(/\s*\[[^\]]+]\s*/, "").trim();
           const parameter: ModelParameter = {

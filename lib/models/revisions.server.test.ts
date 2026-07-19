@@ -14,8 +14,8 @@ afterAll(() => testDb.close());
 const draft = {
   name: "Test bracket",
   description: "A parametric bracket.",
-  source: "width = 18; // [5:1:60]\ncube([width, 10, 4]);",
-  parameters: { width: 24 },
+  source: "WIDTH = 18; // [5:1:60]\ncube([WIDTH, 10, 4]);",
+  parameters: { WIDTH: 24 },
   tags: ["Brackets", "brackets", "3d-printing"],
 };
 
@@ -28,8 +28,8 @@ describe("revision store", () => {
       version: 1,
       name: "Test bracket",
       tags: ["brackets", "3d-printing"],
-      parameters: { width: 24 },
-      parameterSchema: [{ name: "width", type: "number" }],
+      parameters: { WIDTH: 24 },
+      parameterSchema: [{ name: "WIDTH", type: "number" }],
     });
     expect(first.record.metrics.triangles).toBeGreaterThan(0);
 

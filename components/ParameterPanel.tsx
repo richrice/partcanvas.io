@@ -72,7 +72,7 @@ export function ParameterPanel({ parameters, values, presets = [], selectedPrese
         <div className="empty-parameters">
           <SlidersHorizontal size={24} />
           <strong>No public parameters yet</strong>
-          <span>Add a top-level assignment, such as <code>width = 40; // [10:1:80]</code></span>
+          <span>Add an ALL_CAPS top-level assignment, such as <code>WIDTH = 40; // [10:1:80]</code></span>
         </div>
       )}
       {Object.entries(groups).map(([section, items]) => (

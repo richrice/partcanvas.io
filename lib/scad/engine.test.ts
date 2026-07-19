@@ -37,28 +37,38 @@ describe("OpenSCAD-compatible parser", () => {
 describe("Customizer metadata", () => {
   it("extracts ranges, labels, sections, booleans, and select controls", () => {
     const parameters = extractParameters(`/* [Body] */
-width = 40; // Outside width [10:2:80]
-enabled = true; // Add the feature
-style = "round"; // [round:Rounded,square:Square]
-module hidden() { private = 3; }
+WIDTH = 40; // Outside width [10:2:80]
+ENABLED = true; // Add the feature
+STYLE = "round"; // [round:Rounded,square:Square]
+module hidden() { PRIVATE = 3; }
 `);
     expect(parameters).toHaveLength(3);
-    expect(parameters[0]).toMatchObject({ name: "width", section: "Body", min: 10, step: 2, max: 80 });
-    expect(parameters[1]).toMatchObject({ name: "enabled", type: "boolean" });
+    expect(parameters[0]).toMatchObject({ name: "WIDTH", label: "Width", section: "Body", min: 10, step: 2, max: 80 });
+    expect(parameters[1]).toMatchObject({ name: "ENABLED", type: "boolean" });
     expect(parameters[2].options).toHaveLength(2);
+  });
+
+  it("only exposes ALL_CAPS top-level variables", () => {
+    const parameters = extractParameters(`WIDTH = 40; // [10:1:80]
+width = 20; // [10:1:80]
+Mixed_Case = 5;
+helper_offset = WIDTH / 2;
+$fn = 32;
+`);
+    expect(parameters.map((parameter) => parameter.name)).toEqual(["WIDTH"]);
   });
 
   it("extracts vector controls and excludes the Hidden section", () => {
     const parameters = extractParameters(`/* [Dimensions] */
 // Overall XYZ size
-dimensions = [30, 20, 4]; // [1:1:100]
-quality = 2; // [1:Draft,2:Normal,3:Fine]
+DIMENSIONS = [30, 20, 4]; // [1:1:100]
+QUALITY = 2; // [1:Draft,2:Normal,3:Fine]
 /* [Hidden] */
-internal_epsilon = 0.01;
+INTERNAL_EPSILON = 0.01;
 `);
     expect(parameters).toHaveLength(2);
     expect(parameters[0]).toMatchObject({
-      name: "dimensions",
+      name: "DIMENSIONS",
       description: "Overall XYZ size",
       type: "vector",
       defaultValue: [30, 20, 4],
@@ -70,22 +80,22 @@ internal_epsilon = 0.01;
   });
 
   it("infers unit steps for integer customizer ranges", () => {
-    const [count, ratio] = extractParameters("count = 7; // [3:14]\nratio = 0.5; // [0:1]");
+    const [count, ratio] = extractParameters("COUNT = 7; // [3:14]\nRATIO = 0.5; // [0:1]");
     expect(count).toMatchObject({ min: 3, max: 14, step: 1 });
     expect(ratio.step).toBeCloseTo(0.01, 8);
   });
 
   it("recognizes exposed string and RGB color parameters", () => {
     const parameters = extractParameters(`
-body = "navy";
-accent_colour = [0.9, 0.2, 0.1];
-dimensions = [10, 20, 3];
-color(body) cube(dimensions);
-color(c = accent_colour) translate([12, 0, 0]) cube(2);
+BODY = "navy";
+ACCENT_COLOUR = [0.9, 0.2, 0.1];
+DIMENSIONS = [10, 20, 3];
+color(BODY) cube(DIMENSIONS);
+color(c = ACCENT_COLOUR) translate([12, 0, 0]) cube(2);
 `);
-    expect(parameters.find((parameter) => parameter.name === "body")?.type).toBe("color");
-    expect(parameters.find((parameter) => parameter.name === "accent_colour")?.type).toBe("color");
-    expect(parameters.find((parameter) => parameter.name === "dimensions")?.type).toBe("vector");
+    expect(parameters.find((parameter) => parameter.name === "BODY")?.type).toBe("color");
+    expect(parameters.find((parameter) => parameter.name === "ACCENT_COLOUR")?.type).toBe("color");
+    expect(parameters.find((parameter) => parameter.name === "DIMENSIONS")?.type).toBe("vector");
   });
 });
 
@@ -301,10 +311,10 @@ describe("CAD compiler", () => {
     const result = compileScad(`
       include <config/dimensions.scad>
       use <lib/parts.scad>
-      printable_part(width);
+      printable_part(WIDTH);
     `, {
       files: {
-        "config/dimensions.scad": "width = 24;",
+        "config/dimensions.scad": "WIDTH = 24;",
         "lib/parts.scad": `
           function half(value) = value / 2;
           module printable_part(size) { cube([size, half(size), 4]); }
@@ -313,7 +323,7 @@ describe("CAD compiler", () => {
       },
     });
     expect(result.metrics.dimensions).toEqual([24, 12, 4]);
-    expect(result.parameters).toEqual(expect.arrayContaining([expect.objectContaining({ name: "width", defaultValue: 24 })]));
+    expect(result.parameters).toEqual(expect.arrayContaining([expect.objectContaining({ name: "WIDTH", defaultValue: 24 })]));
   });
 
   it("reports missing and circular project files", () => {
@@ -386,19 +396,19 @@ describe("CAD compiler", () => {
 
   it("diagnoses unsafe parameter overrides when checks are enabled", () => {
     const result = compileScad(`
-      width = 20; // [10:1:40]
-      dimensions = [20, 10, 4]; // [1:1:50]
-      style = "round"; // [round,square]
-      cube(dimensions);
+      WIDTH = 20; // [10:1:40]
+      DIMENSIONS = [20, 10, 4]; // [1:1:50]
+      STYLE = "round"; // [round,square]
+      cube(DIMENSIONS);
     `, {
-      parameters: { width: 100, dimensions: [20, 10], style: "triangle", extra: true },
+      parameters: { WIDTH: 100, DIMENSIONS: [20, 10], STYLE: "triangle", extra: true },
       checkParameters: true,
       checkParameterRanges: true,
     });
     expect(result.warnings).toEqual(expect.arrayContaining([
-      expect.stringContaining("width' must be between 10 and 40"),
-      expect.stringContaining("dimensions' expects vector"),
-      expect.stringContaining("style' must be one of"),
+      expect.stringContaining("WIDTH' must be between 10 and 40"),
+      expect.stringContaining("DIMENSIONS' expects vector"),
+      expect.stringContaining("STYLE' must be one of"),
       expect.stringContaining("Unknown parameter override 'extra'"),
     ]));
   });

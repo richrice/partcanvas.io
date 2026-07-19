@@ -7,9 +7,9 @@ describe("POST /api/parameters", () => {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        source: "include <settings.scad>\nuse <part.scad>\npart(width);",
+        source: "include <settings.scad>\nuse <part.scad>\npart(WIDTH);",
         files: {
-          "settings.scad": "width = 30; // [10:1:80]",
+          "settings.scad": "WIDTH = 30; // [10:1:80]",
           "part.scad": "module part(size) { cube(size); }",
         },
       }),
@@ -17,8 +17,8 @@ describe("POST /api/parameters", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
       valid: true,
-      defaults: { width: 30 },
-      parameters: [{ name: "width", min: 10, step: 1, max: 80 }],
+      defaults: { WIDTH: 30 },
+      parameters: [{ name: "WIDTH", min: 10, step: 1, max: 80 }],
     });
   });
 
@@ -27,15 +27,15 @@ describe("POST /api/parameters", () => {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        source: "size = [20, 10, 4]; // [1:1:50]\nstyle = \"round\"; // [round,square]\ncube(size);",
-        values: { size: [60, 10, 4], style: "triangle", unknown: 1 },
+        source: "SIZE = [20, 10, 4]; // [1:1:50]\nSTYLE = \"round\"; // [round,square]\ncube(SIZE);",
+        values: { SIZE: [60, 10, 4], STYLE: "triangle", unknown: 1 },
         checkRanges: true,
       }),
     }));
     expect(response.status).toBe(200);
     expect((await response.json()).diagnostics).toEqual(expect.arrayContaining([
-      expect.objectContaining({ code: "out-of-range", parameter: "size" }),
-      expect.objectContaining({ code: "invalid-option", parameter: "style" }),
+      expect.objectContaining({ code: "out-of-range", parameter: "SIZE" }),
+      expect.objectContaining({ code: "invalid-option", parameter: "STYLE" }),
       expect.objectContaining({ code: "unknown-parameter", parameter: "unknown" }),
     ]));
   });
@@ -45,25 +45,25 @@ describe("POST /api/parameters", () => {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        source: "width = 20; // [10:1:80]\nenabled = true;\ncube(width);",
+        source: "WIDTH = 20; // [10:1:80]\nENABLED = true;\ncube(WIDTH);",
         parameterFile: {
           parameterSets: {
-            Small: { width: "12", enabled: "false" },
-            Large: { width: "70", enabled: "true" },
+            Small: { WIDTH: "12", ENABLED: "false" },
+            Large: { WIDTH: "70", ENABLED: "true" },
           },
           fileFormatVersion: "1",
         },
         parameterSet: "Large",
-        values: { width: 75 },
+        values: { WIDTH: 75 },
       }),
     }));
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
       selectedParameterSet: "Large",
-      values: { width: 75, enabled: true },
+      values: { WIDTH: 75, ENABLED: true },
       parameterSets: [
-        { name: "Small", values: { width: 12, enabled: false } },
-        { name: "Large", values: { width: 70, enabled: true } },
+        { name: "Small", values: { WIDTH: 12, ENABLED: false } },
+        { name: "Large", values: { WIDTH: 70, ENABLED: true } },
       ],
     });
   });

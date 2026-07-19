@@ -66,8 +66,8 @@ describe("POST /api/render", () => {
 
   it("exposes parameter warnings and can fail them as hard warnings", async () => {
     const body = {
-      source: "width = 20; // [10:1:40]\ncube(width);",
-      parameters: { width: 80 },
+      source: "WIDTH = 20; // [10:1:40]\ncube(WIDTH);",
+      parameters: { WIDTH: 80 },
       options: { checkParameterRanges: true },
     };
     const warned = await POST(renderRequest(body));
@@ -106,16 +106,16 @@ describe("POST /api/render", () => {
 
   it("mirrors OpenSCAD -p/-P customizer presets with explicit override precedence", async () => {
     const response = await POST(renderRequest({
-      source: "width = 10; // [5:1:100]\ndepth = 8; // [2:1:40]\nheight = 2; // [1:1:20]\ncube([width, depth, height]);",
+      source: "WIDTH = 10; // [5:1:100]\nDEPTH = 8; // [2:1:40]\nHEIGHT = 2; // [1:1:20]\ncube([WIDTH, DEPTH, HEIGHT]);",
       files: {
         "presets.json": JSON.stringify({
-          parameterSets: { Production: { width: "40", depth: "20", height: "6" } },
+          parameterSets: { Production: { WIDTH: "40", DEPTH: "20", HEIGHT: "6" } },
           fileFormatVersion: "1",
         }),
       },
       parameterFile: "presets.json",
       parameterSet: "Production",
-      parameters: { height: 8 },
+      parameters: { HEIGHT: 8 },
       format: "stl",
     }));
     expect(response.status).toBe(200);
@@ -124,9 +124,9 @@ describe("POST /api/render", () => {
   });
 
   it("supports compact p/P aliases and rejects incomplete or unknown preset selection", async () => {
-    const preset = { parameterSets: { Small: { width: "12" } }, fileFormatVersion: "1" };
+    const preset = { parameterSets: { Small: { WIDTH: "12" } }, fileFormatVersion: "1" };
     const rendered = await POST(renderRequest({
-      source: "width = 10; // [5:1:100]\ncube(width);",
+      source: "WIDTH = 10; // [5:1:100]\ncube(WIDTH);",
       p: preset,
       P: "Small",
     }));
@@ -137,15 +137,15 @@ describe("POST /api/render", () => {
     expect(incomplete.status).toBe(400);
     expect(await incomplete.json()).toMatchObject({ error: expect.stringContaining("supplied together") });
 
-    const missing = await POST(renderRequest({ source: "width=10; cube(width);", p: preset, P: "Missing" }));
+    const missing = await POST(renderRequest({ source: "WIDTH=10; cube(WIDTH);", p: preset, P: "Missing" }));
     expect(missing.status).toBe(422);
     expect(await missing.json()).toMatchObject({ error: expect.stringContaining("was not found") });
   });
 
   it("returns a machine-readable all-category render summary", async () => {
     const response = await POST(renderRequest({
-      source: 'width = 10; // [5:1:40]\necho("ready", width); cube([width, 4, 2]);',
-      parameters: { width: 12 },
+      source: 'WIDTH = 10; // [5:1:40]\necho("ready", WIDTH); cube([WIDTH, 4, 2]);',
+      parameters: { WIDTH: 12 },
       format: "stl",
       filename: "summary-part",
       summary: true,
@@ -159,7 +159,7 @@ describe("POST /api/render", () => {
       engine: "partcanvas-typescript",
       categories: ["cache", "time", "camera", "geometry", "bounding-box", "area"],
       output: { format: "stl", filename: "summary-part.stl", mimeType: "model/stl" },
-      parameters: { parameterSet: null, values: { width: 12 } },
+      parameters: { parameterSet: null, values: { WIDTH: 12 } },
       geometry: {
         dimensions: 3,
         facets: 12,
@@ -199,15 +199,15 @@ describe("POST /api/render", () => {
 
   it("reports selected presets and effective overrides in summaries", async () => {
     const response = await POST(renderRequest({
-      source: "width = 10; // [5:1:100]\ndepth = 8; // [2:1:40]\ncube([width, depth, 2]);",
-      p: { parameterSets: { Production: { width: "40", depth: "20" } }, fileFormatVersion: "1" },
+      source: "WIDTH = 10; // [5:1:100]\nDEPTH = 8; // [2:1:40]\ncube([WIDTH, DEPTH, 2]);",
+      p: { parameterSets: { Production: { WIDTH: "40", DEPTH: "20" } }, fileFormatVersion: "1" },
       P: "Production",
-      parameters: { depth: 24 },
+      parameters: { DEPTH: 24 },
       summary: "geometry,bounding-box,area",
     }));
     const body = await response.json();
     expect(response.status).toBe(200);
-    expect(body.parameters).toEqual({ parameterSet: "Production", values: { width: 40, depth: 24 } });
+    expect(body.parameters).toEqual({ parameterSet: "Production", values: { WIDTH: 40, DEPTH: 24 } });
     expect(body.geometry.bounding_box.size).toEqual([40, 24, 2]);
     expect(body.measurements.volume_mm3).toBeCloseTo(1920, 4);
   });
@@ -220,9 +220,9 @@ describe("POST /api/render", () => {
 
   it("surfaces invalid preset entries and honors hardWarnings", async () => {
     const body = {
-      source: "width = 10; // [5:1:100]\ncube(width);",
+      source: "WIDTH = 10; // [5:1:100]\ncube(WIDTH);",
       parameterFile: {
-        parameterSets: { Legacy: { width: "wide", removed_option: "1" } },
+        parameterSets: { Legacy: { WIDTH: "wide", removed_option: "1" } },
         fileFormatVersion: "1",
       },
       parameterSet: "Legacy",
@@ -230,7 +230,7 @@ describe("POST /api/render", () => {
     const warned = await POST(renderRequest(body));
     expect(warned.status).toBe(200);
     expect(warned.headers.get("x-partcanvas-warning-count")).toBe("2");
-    expect(decodeURIComponent(warned.headers.get("x-partcanvas-warnings") ?? "")).toContain("invalid value for 'width'");
+    expect(decodeURIComponent(warned.headers.get("x-partcanvas-warnings") ?? "")).toContain("invalid value for 'WIDTH'");
 
     const stopped = await POST(renderRequest({ ...body, options: { hardWarnings: true } }));
     expect(stopped.status).toBe(422);

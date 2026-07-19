@@ -4,24 +4,24 @@ import { extractParameters } from "./parameters";
 import { inspectOpenScadParameterSets, loadOpenScadParameterFile, resolveOpenScadParameterSet } from "./parameter-sets";
 
 const source = `
-width = 20; // [10:1:80]
-enabled = true;
-dimensions = [10, 8, 2]; // [1:1:50]
-style = "round"; // [round:Rounded,square:Square]
-label = "PART";
+WIDTH = 20; // [10:1:80]
+ENABLED = true;
+DIMENSIONS = [10, 8, 2]; // [1:1:50]
+STYLE = "round"; // [round:Rounded,square:Square]
+LABEL = "PART";
 `;
 
 const officialStyleFile = {
   parameterSets: {
     Large: {
-      width: "100",
-      enabled: "false",
-      dimensions: "[30, 20, 4]",
-      style: "square",
-      label: "LARGE PART",
+      WIDTH: "100",
+      ENABLED: "false",
+      DIMENSIONS: "[30, 20, 4]",
+      STYLE: "square",
+      LABEL: "LARGE PART",
       obsolete: "ignored",
     },
-    Broken: { width: "wide", dimensions: "[1, 2]" },
+    Broken: { WIDTH: "wide", DIMENSIONS: "[1, 2]" },
   },
   fileFormatVersion: "1",
 };
@@ -31,11 +31,11 @@ describe("OpenSCAD customizer parameter sets", () => {
     const file = loadOpenScadParameterFile(officialStyleFile);
     const result = resolveOpenScadParameterSet(file, "Large", extractParameters(source));
     expect(result.values).toEqual({
-      width: 80,
-      enabled: false,
-      dimensions: [30, 20, 4],
-      style: "square",
-      label: "LARGE PART",
+      WIDTH: 80,
+      ENABLED: false,
+      DIMENSIONS: [30, 20, 4],
+      STYLE: "square",
+      LABEL: "LARGE PART",
     });
     expect(result.diagnostics).toEqual([
       expect.objectContaining({ code: "unknown-preset-parameter", parameter: "obsolete" }),
