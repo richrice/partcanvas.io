@@ -14,7 +14,8 @@ import type { CompileWorkerRequest, CompileWorkerResponse } from "@/lib/compile-
 // Bump when engine semantics change enough that cached geometry would lie.
 // v2: real Liberation Sans text() outlines, color-preserving union(),
 // OpenSCAD child-node boolean semantics.
-const CACHE_VERSION = 2;
+// v3: OpenSCAD-compatible str() real-number formatting.
+const CACHE_VERSION = 3;
 const MEMORY_CAPACITY = 16;
 // Persist all but trivial compiles: users expect a refreshed model page to
 // load from cache, and even an ~80ms compile is a visible flash on top of
