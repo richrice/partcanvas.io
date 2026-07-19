@@ -31,7 +31,9 @@ export function AuthMenu() {
   }, [open]);
 
   const signIn = (provider: "github" | "google") => {
-    void authClient.signIn.social({ provider, callbackURL: window.location.pathname });
+    // Keep the query string: signing in from a gallery search or a shared
+    // editor link should land back on the same view.
+    void authClient.signIn.social({ provider, callbackURL: window.location.pathname + window.location.search });
   };
 
   if (isPending) return <div className="auth-menu" ref={menuRef} />;

@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { modelRevisions, user } from "../db/schema";
 import { createTestDatabase } from "../db/test-db.server";
-import { createModel, findPublicModelByHeadRevision, getForkLineage, getModelByOwnerSlug, listModelsByOwner, readModel, slugify } from "./models.server";
+import { createModel, findModelForRevision, findPublicModelByHeadRevision, getForkLineage, getModelByOwnerSlug, listModelsByOwner, publishModelVersion, readModel, slugify } from "./models.server";
 import { saveRevision } from "./revisions.server";
 
 let testDb: Awaited<ReturnType<typeof createTestDatabase>>;
@@ -96,6 +96,23 @@ describe("model store", () => {
     expect(found).toEqual({ title: "Phone Stand", slug: "phone-stand", ownerUsername: "owner-one" });
     const saved = await saveRevision({ name: "Unreferenced", source: "cube([7, 7, 7]);" }, testDb.db);
     expect(await findPublicModelByHeadRevision(saved.record.id, testDb.db)).toBeNull();
+  });
+
+  it("resolves historical revisions through the publish history", async () => {
+    const model = await createModel({ ownerId: "owner-2", title: "Versioned box", revisionId }, testDb.db);
+    const v2 = await saveRevision({ name: "Versioned box", source: "cube([8, 8, 8]);" }, testDb.db);
+    await publishModelVersion(model.id, v2.record.id, testDb.db);
+    // The new head resolves with version null; the superseded v1 revision
+    // resolves through model_revisions with its version number.
+    expect(await findModelForRevision(v2.record.id, testDb.db)).toMatchObject({ slug: "versioned-box", version: null });
+    const historical = await findModelForRevision(revisionId, testDb.db);
+    // revisionId is still the head of older public models — the head lookup
+    // wins there, so assert via a revision that is *only* historical.
+    expect(historical).not.toBeNull();
+    const v3 = await saveRevision({ name: "Versioned box", source: "cube([9, 9, 9]);" }, testDb.db);
+    await publishModelVersion(model.id, v3.record.id, testDb.db);
+    expect(await findModelForRevision(v2.record.id, testDb.db)).toEqual({ title: "Versioned box", slug: "versioned-box", ownerUsername: "owner-two", version: 2 });
+    expect(await findModelForRevision("ffffffffffffffffffffffff", testDb.db)).toBeNull();
   });
 
   it("records fork lineage and searches via the generated tsvector", async () => {

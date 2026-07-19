@@ -10,6 +10,7 @@ import {
   Code2,
   Compass,
   Download,
+  Eye,
   FilePlus2,
   Flag,
   GitFork,
@@ -18,11 +19,13 @@ import {
   History,
   LoaderCircle,
   Maximize2,
-  Menu,
-  MoreHorizontal,
+  MessageSquare,
+  Pencil,
   Rotate3D,
+  Send,
   Share2,
   TerminalSquare,
+  Trash2,
   TriangleAlert,
   Upload,
 } from "lucide-react";
@@ -41,6 +44,7 @@ import { resolveSourceFiles } from "@/lib/scad/files";
 import { inspectOpenScadParameterSets, loadOpenScadParameterFile } from "@/lib/scad/parameter-sets";
 import { authClient } from "@/lib/auth/client";
 import { LICENSES, VISIBILITIES, type License, type Visibility } from "@/lib/models/types";
+import { relativeTime } from "@/lib/relative-time";
 import { decodeSharedModel, encodeSharedModel } from "@/lib/share";
 
 const format = (value: number) => value >= 100 ? value.toFixed(0) : value >= 10 ? value.toFixed(1) : value.toFixed(2);
@@ -64,6 +68,11 @@ export interface SocialChromeModel {
   authorName: string;
   likeCount: number;
   downloadCount: number;
+  commentCount: number;
+  viewCount: number;
+  visibility: Visibility;
+  createdAt: string;
+  updatedAt: string;
   tags: string[];
   viewerLiked: boolean;
   forkedFrom?: { title: string; author: string; url: string };
@@ -73,12 +82,22 @@ export interface SocialChromeModel {
   versions: { version: number; revisionId: string; publishedAt: string }[];
 }
 
+export interface ModelComment {
+  id: string;
+  body: string;
+  createdAt: string;
+  author: { username: string | null; name: string; image: string | null };
+  viewerIsAuthor: boolean;
+}
+
 // Revision permalinks (/m/:id) link back to the community model page whose
 // head this revision is (P3.7).
 export interface RevisionOfModel {
   title: string;
   author: string;
   url: string;
+  // Set when this revision is a historical version rather than the head.
+  version?: number;
 }
 
 export function Workspace({ initialModel, social, revisionOf }: { initialModel?: InitialWorkspaceModel; social?: SocialChromeModel; revisionOf?: RevisionOfModel }) {
@@ -104,7 +123,7 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
   const [showExamples, setShowExamples] = useState(false);
   const [exportFormat, setExportFormat] = useState<ExportFormat>("stl");
   const [mobilePanel, setMobilePanel] = useState<"code" | "preview" | "parameters">("preview");
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ text: string; kind: "success" | "error" } | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [showPublishDialog, setShowPublishDialog] = useState(false);
   const [publishDescription, setPublishDescription] = useState("");
@@ -120,6 +139,14 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
   const [cursorLocation, setCursorLocation] = useState<CursorLocation>({ line: 1, column: 1 });
   const uploadRef = useRef<HTMLInputElement>(null);
   const thumbnailCaptureRef = useRef<(() => string | null) | null>(null);
+  // One shared toast pipeline: later notices replace earlier ones instead of
+  // being clipped by a stale timer, and errors render distinctly from success.
+  const noticeTimer = useRef<number | null>(null);
+  const showNotice = useCallback((text: string, kind: "success" | "error" = "success", duration = 2400) => {
+    if (noticeTimer.current !== null) window.clearTimeout(noticeTimer.current);
+    setNotice({ text, kind });
+    noticeTimer.current = window.setTimeout(() => setNotice(null), duration);
+  }, []);
   const parameterPresets = useMemo(() => Object.keys(projectFiles)
     .filter((filename) => extensionOf(filename) === "json")
     .sort()
@@ -180,10 +207,14 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
 
   useEffect(() => {
     const timeout = window.setTimeout(compile, 320);
-    window.localStorage.setItem("partcanvas.source", source);
-    window.localStorage.setItem("partcanvas.files", JSON.stringify(projectFiles));
+    // The local draft belongs to /new only — hosted model pages must never
+    // overwrite it just because they were viewed.
+    if (!initialModel) {
+      window.localStorage.setItem("partcanvas.source", source);
+      window.localStorage.setItem("partcanvas.files", JSON.stringify(projectFiles));
+    }
     return () => window.clearTimeout(timeout);
-  }, [compile, source, projectFiles]);
+  }, [compile, source, projectFiles, initialModel]);
 
   const chooseExample = (index: number) => {
     const example = EXAMPLES[index];
@@ -209,29 +240,30 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `partcanvas-model.${serialized.extension}`;
+    const filename = modelName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "partcanvas-model";
+    anchor.download = `${filename}.${serialized.extension}`;
     anchor.click();
     URL.revokeObjectURL(url);
   };
 
   const shareModel = async () => {
     const encoded = encodeSharedModel({ source, parameters, files: projectFiles });
-    const url = `${window.location.origin}${window.location.pathname}?model=${encoded}`;
+    // Always target /new: hosted model pages ignore ?model= (initialModel wins
+    // there), so a share link must land where the payload is actually read.
+    const url = `${window.location.origin}/new?model=${encoded}`;
     try {
       await navigator.clipboard.writeText(url);
-      setNotice("Model link copied");
+      showNotice("Model link copied");
     } catch {
-      setNotice("Could not access the clipboard");
+      showNotice("Could not access the clipboard", "error");
     }
-    window.setTimeout(() => setNotice(null), 2200);
   };
 
   const publishModel = async () => {
     if (!result?.geometry || result.dimension !== 3 || publishing) return;
     // Publishing requires an account (D6); Share links stay anonymous.
     if (!authSession?.user) {
-      setNotice("Sign in to publish — Share links work without an account");
-      window.setTimeout(() => setNotice(null), 2600);
+      showNotice("Sign in to publish — Share links work without an account", "error", 2600);
       return;
     }
     setPublishError(null);
@@ -260,8 +292,7 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
         const payload = await response.json() as { version?: number; error?: string };
         if (!response.ok || !payload.version) throw new Error(payload.error || "Could not publish the update");
         setShowPublishDialog(false);
-        setNotice(`Version ${payload.version} published`);
-        window.setTimeout(() => setNotice(null), 2600);
+        showNotice(`Version ${payload.version} published`, "success", 2600);
         router.refresh();
         return;
       }
@@ -297,8 +328,7 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
   const forkCurrentModel = async () => {
     if (!social || forking) return;
     if (!authSession?.user) {
-      setNotice("Sign in to fork models");
-      window.setTimeout(() => setNotice(null), 2200);
+      showNotice("Sign in to fork models", "error");
       return;
     }
     setForking(true);
@@ -308,8 +338,7 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
       if (!response.ok || !payload.url) throw new Error(payload.error || "Could not fork model");
       router.push(payload.url);
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Could not fork model");
-      window.setTimeout(() => setNotice(null), 2600);
+      showNotice(error instanceof Error ? error.message : "Could not fork model", "error", 2600);
       setForking(false);
     }
   };
@@ -319,30 +348,34 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
     if (!social || reporting) return;
     setReporting(true);
     try {
-      await fetch(`/api/models/${social.modelId}/report`, {
+      const response = await fetch(`/api/models/${social.modelId}/report`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ reason: reportReason }),
       });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({})) as { error?: string };
+        throw new Error(payload.error || "Could not send the report");
+      }
       setShowReport(false);
       setReportReason("");
-      setNotice("Report sent — thank you");
-    } catch {
-      setNotice("Could not send the report");
+      showNotice("Report sent — thank you", "success", 2600);
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : "Could not send the report", "error", 2600);
     } finally {
       setReporting(false);
-      window.setTimeout(() => setNotice(null), 2600);
     }
   };
 
+  const likePending = useRef(false);
   const toggleLike = async () => {
-    if (!social) return;
+    if (!social || likePending.current) return;
     if (!authSession?.user) {
-      setNotice("Sign in to like models");
-      window.setTimeout(() => setNotice(null), 2200);
+      showNotice("Sign in to like models", "error");
       return;
     }
     // Optimistic flip, reconciled from (or rolled back by) the server.
+    likePending.current = true;
     const nextLiked = !liked;
     setLiked(nextLiked);
     setLikeCount((count) => count + (nextLiked ? 1 : -1));
@@ -352,9 +385,169 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
       if (!response.ok || payload.liked === undefined || payload.likeCount === undefined) throw new Error(payload.error);
       setLiked(payload.liked);
       setLikeCount(payload.likeCount);
-    } catch {
+    } catch (error) {
       setLiked(!nextLiked);
       setLikeCount((count) => count + (nextLiked ? -1 : 1));
+      showNotice(error instanceof Error && error.message ? error.message : "Could not update the like", "error");
+    } finally {
+      likePending.current = false;
+    }
+  };
+
+  // Comments drawer (adversarial-review P0: the community had no discussion
+  // surface at all). Loaded lazily on first open.
+  const [showDrawer, setShowDrawer] = useState(false);
+  const [commentCount, setCommentCount] = useState(social?.commentCount ?? 0);
+  const [commentsData, setCommentsData] = useState<ModelComment[] | null>(null);
+  const [commentsHasMore, setCommentsHasMore] = useState(false);
+  const [commentsPage, setCommentsPage] = useState(1);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentsError, setCommentsError] = useState<string | null>(null);
+  const [viewerCanModerate, setViewerCanModerate] = useState(false);
+  const [commentDraft, setCommentDraft] = useState("");
+  const [postingComment, setPostingComment] = useState(false);
+
+  const loadComments = useCallback(async (page = 1) => {
+    if (!social) return;
+    setCommentsLoading(true);
+    setCommentsError(null);
+    try {
+      const response = await fetch(`/api/app/models/${social.modelId}/comments?page=${page}`);
+      const payload = await response.json() as { comments?: ModelComment[]; commentCount?: number; hasMore?: boolean; viewerCanModerate?: boolean; error?: string };
+      if (!response.ok || !payload.comments) throw new Error(payload.error || "Could not load comments");
+      const loaded = payload.comments;
+      setCommentsData((current) => page === 1 ? loaded : [...(current ?? []), ...loaded]);
+      setCommentsPage(page);
+      setCommentsHasMore(payload.hasMore ?? false);
+      setCommentCount(payload.commentCount ?? 0);
+      setViewerCanModerate(payload.viewerCanModerate ?? false);
+    } catch (error) {
+      setCommentsError(error instanceof Error ? error.message : "Could not load comments");
+    } finally {
+      setCommentsLoading(false);
+    }
+  }, [social]);
+
+  const toggleDrawer = () => {
+    setShowDrawer((open) => {
+      if (!open && commentsData === null) void loadComments();
+      return !open;
+    });
+  };
+
+  const submitComment = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!social || postingComment || !commentDraft.trim()) return;
+    if (!authSession?.user) {
+      showNotice("Sign in to comment", "error");
+      return;
+    }
+    setPostingComment(true);
+    try {
+      const response = await fetch(`/api/app/models/${social.modelId}/comments`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ body: commentDraft }),
+      });
+      const payload = await response.json() as { comment?: ModelComment; error?: string };
+      if (!response.ok || !payload.comment) throw new Error(payload.error || "Could not post the comment");
+      const posted = payload.comment;
+      setCommentsData((current) => [posted, ...(current ?? [])]);
+      setCommentCount((count) => count + 1);
+      setCommentDraft("");
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : "Could not post the comment", "error", 2600);
+    } finally {
+      setPostingComment(false);
+    }
+  };
+
+  const removeComment = async (commentId: string) => {
+    if (!social) return;
+    try {
+      const response = await fetch(`/api/app/models/${social.modelId}/comments/${commentId}`, { method: "DELETE" });
+      const payload = await response.json().catch(() => ({})) as { commentCount?: number; error?: string };
+      if (!response.ok) throw new Error(payload.error || "Could not delete the comment");
+      setCommentsData((current) => (current ?? []).filter((comment) => comment.id !== commentId));
+      if (payload.commentCount !== undefined) setCommentCount(payload.commentCount);
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : "Could not delete the comment", "error");
+    }
+  };
+
+  // Owner metadata editing + deletion over the long-existing PATCH/DELETE
+  // endpoints that previously had no UI (adversarial-review P0).
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editLicense, setEditLicense] = useState<License>("CC-BY-4.0");
+  const [editVisibility, setEditVisibility] = useState<Visibility>("public");
+  const [editTags, setEditTags] = useState("");
+  const [editError, setEditError] = useState<string | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deletingModel, setDeletingModel] = useState(false);
+
+  const openEditDialog = () => {
+    if (!social) return;
+    setEditTitle(social.title);
+    setEditDescription(social.description);
+    setEditLicense(social.license);
+    setEditVisibility(social.visibility);
+    setEditTags(social.tags.join(", "));
+    setEditError(null);
+    setConfirmingDelete(false);
+    setShowEditDialog(true);
+  };
+
+  const saveModelEdits = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!social || savingEdit) return;
+    setSavingEdit(true);
+    setEditError(null);
+    try {
+      const response = await fetch(`/api/app/models/${social.modelId}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title: editTitle,
+          description: editDescription,
+          license: editLicense,
+          visibility: editVisibility,
+          tags: editTags.split(",").map((tag) => tag.trim()).filter(Boolean),
+        }),
+      });
+      const payload = await response.json().catch(() => ({})) as { error?: string };
+      if (!response.ok) throw new Error(payload.error || "Could not save the changes");
+      setShowEditDialog(false);
+      setModelName(editTitle.trim() || modelName);
+      showNotice("Model details saved");
+      router.refresh();
+    } catch (error) {
+      setEditError(error instanceof Error ? error.message : "Could not save the changes");
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const deleteThisModel = async () => {
+    if (!social || deletingModel) return;
+    if (!confirmingDelete) {
+      setConfirmingDelete(true);
+      return;
+    }
+    setDeletingModel(true);
+    setEditError(null);
+    try {
+      const response = await fetch(`/api/app/models/${social.modelId}`, { method: "DELETE" });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({})) as { error?: string };
+        throw new Error(payload.error || "Could not delete the model");
+      }
+      router.push(`/u/${social.authorUsername}`);
+    } catch (error) {
+      setEditError(error instanceof Error ? error.message : "Could not delete the model");
+      setDeletingModel(false);
     }
   };
 
@@ -371,10 +564,7 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
     const preset = parameterPresets.find((candidate) => candidate.key === key);
     setSelectedPreset(key);
     setParameters(preset ? { ...defaultParameterValues(definitions), ...preset.values } : defaultParameterValues(definitions));
-    if (preset) {
-      setNotice(`Preset “${preset.name}” applied`);
-      window.setTimeout(() => setNotice(null), 2200);
-    }
+    if (preset) showNotice(`Preset “${preset.name}” applied`);
   };
   const createLibrary = () => {
     let index = Object.keys(projectFiles).length + 1;
@@ -392,7 +582,6 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
     <main className="app-shell">
       <header className="topbar">
         <div className="brand-block">
-          <button className="mobile-menu" aria-label="Open menu"><Menu size={19} /></button>
           <Link className="brand" href="/" aria-label="partcanvas.io home">
             <span className="brand-mark"><Box size={18} strokeWidth={2.2} /></span>
             <span>partcanvas<span>.io</span></span>
@@ -426,14 +615,13 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
             <Download size={16} /> Export {effectiveExportFormat.toUpperCase()}
           </button>
           <AuthMenu />
-          <button className="icon-button"><MoreHorizontal size={18} /></button>
         </nav>
       </header>
 
       {revisionOf && !social && (
         <div className="social-bar revision-bar">
           <div className="social-main">
-            <span className="social-author">Permanent revision snapshot of <a href={revisionOf.url}>{revisionOf.title}</a> by <a href={`/u/${revisionOf.author}`}>{revisionOf.author}</a></span>
+            <span className="social-author">Permanent snapshot{revisionOf.version ? ` of v${revisionOf.version}` : ""} of <a href={revisionOf.url}>{revisionOf.title}</a> by <a href={`/u/${revisionOf.author}`}>{revisionOf.author}</a></span>
           </div>
           <div className="social-actions">
             <a className="ghost-button" href={revisionOf.url}>View model page →</a>
@@ -451,10 +639,14 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
             {social.description ? <span className="social-description" title={social.description}>{social.description}</span> : null}
           </div>
           <div className="social-actions">
-            {social.tags.slice(0, 4).map((tag) => <span className="social-tag" key={tag}>{tag}</span>)}
+            {social.tags.slice(0, 4).map((tag) => <Link className="social-tag" key={tag} href={`/?tag=${encodeURIComponent(tag)}`} title={`Browse #${tag} models`}>{tag}</Link>)}
+            {social.tags.length > 4 ? <span className="social-tag" title={social.tags.slice(4).join(", ")}>+{social.tags.length - 4}</span> : null}
             <span className="license-badge" title="License">{social.license}</span>
             <button className={`ghost-button social-count ${liked ? "liked" : ""}`} onClick={toggleLike} title={liked ? "Unlike" : "Like"}>
               <Heart size={14} fill={liked ? "currentColor" : "none"} /> {likeCount}
+            </button>
+            <button className={`ghost-button social-count ${showDrawer ? "drawer-open" : ""}`} onClick={toggleDrawer} title="Comments and details">
+              <MessageSquare size={14} /> {commentCount}
             </button>
             <button className="ghost-button social-count" onClick={forkCurrentModel} disabled={forking} title="Fork this model into your account">
               {forking ? <LoaderCircle className="spinner" size={14} /> : <GitFork size={14} />} Fork
@@ -492,6 +684,12 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
               </div>
             )}
             <span className="social-count-static" title="Downloads"><Download size={14} /> {downloadCount}</span>
+            <span className="social-count-static" title="Views"><Eye size={14} /> {social.viewCount}</span>
+            {social.viewerIsOwner && (
+              <button className="ghost-button social-count" onClick={openEditDialog} title="Edit model details">
+                <Pencil size={14} />
+              </button>
+            )}
             <div className="example-picker">
               <button className="ghost-button social-count" onClick={() => setShowReport((value) => !value)} title="Report this model">
                 <Flag size={14} />
@@ -515,6 +713,71 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
             </div>
           </div>
         </div>
+      )}
+
+      {social && showDrawer && (
+        <section className="model-drawer" aria-label="Model details and comments">
+          <div className="drawer-about">
+            <h3>About</h3>
+            <p className={`drawer-description ${social.description ? "" : "drawer-muted"}`}>{social.description || "No description yet."}</p>
+            {social.tags.length > 0 && (
+              <div className="drawer-tags">
+                {social.tags.map((tag) => <Link key={tag} className="social-tag" href={`/?tag=${encodeURIComponent(tag)}`}>#{tag}</Link>)}
+              </div>
+            )}
+            <p className="drawer-meta" suppressHydrationWarning>
+              Published {new Date(social.createdAt).toLocaleDateString()} · Updated {relativeTime(social.updatedAt)} · {social.viewCount} view{social.viewCount === 1 ? "" : "s"} · {social.license}
+            </p>
+          </div>
+          <div className="drawer-comments">
+            <h3>Comments ({commentCount})</h3>
+            {authSession?.user ? (
+              <form className="comment-composer" onSubmit={submitComment}>
+                <textarea
+                  aria-label="Write a comment"
+                  rows={2}
+                  maxLength={2000}
+                  placeholder="Share print results, ask a question…"
+                  value={commentDraft}
+                  onChange={(event) => setCommentDraft(event.target.value)}
+                />
+                <button className="primary-button" type="submit" disabled={postingComment || !commentDraft.trim()}>
+                  {postingComment ? <LoaderCircle className="spinner" size={14} /> : <Send size={14} />} Post
+                </button>
+              </form>
+            ) : (
+              <p className="drawer-muted">Sign in (top right) to join the discussion.</p>
+            )}
+            {commentsError && (
+              <p className="drawer-muted">{commentsError} <button className="ghost-button" onClick={() => void loadComments(1)}>Retry</button></p>
+            )}
+            {commentsData !== null && commentsData.length === 0 && !commentsLoading && !commentsError && (
+              <p className="drawer-muted">No comments yet — start the discussion.</p>
+            )}
+            <ul className="comment-list">
+              {(commentsData ?? []).map((comment) => (
+                <li key={comment.id}>
+                  <div className="comment-head">
+                    {comment.author.username
+                      ? <Link href={`/u/${comment.author.username}`}>{comment.author.username}</Link>
+                      : <span>{comment.author.name}</span>}
+                    <time suppressHydrationWarning title={new Date(comment.createdAt).toLocaleString()}>{relativeTime(comment.createdAt)}</time>
+                    {(comment.viewerIsAuthor || viewerCanModerate) && (
+                      <button className="comment-delete" onClick={() => void removeComment(comment.id)} title="Delete comment" aria-label="Delete comment">
+                        <Trash2 size={13} />
+                      </button>
+                    )}
+                  </div>
+                  <p className="comment-body">{comment.body}</p>
+                </li>
+              ))}
+            </ul>
+            {commentsLoading && <p className="drawer-muted"><LoaderCircle className="spinner" size={13} /> Loading comments…</p>}
+            {commentsHasMore && !commentsLoading && (
+              <button className="ghost-button" onClick={() => void loadComments(commentsPage + 1)}>Load more comments</button>
+            )}
+          </div>
+        </section>
       )}
 
       <div className="mobile-tabs">
@@ -541,8 +804,7 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
                   setSelectedPreset("");
                   if (!scadFiles.length && contents.length) {
                     setProjectFiles((current) => ({ ...current, ...Object.fromEntries(contents.map((file) => [file.name, file.source])) }));
-                    setNotice(`${contents.length} model asset${contents.length === 1 ? "" : "s"} added`);
-                    window.setTimeout(() => setNotice(null), 2200);
+                    showNotice(`${contents.length} model asset${contents.length === 1 ? "" : "s"} added`);
                   } else if (contents.length === 1) {
                     setSource(contents[0].source);
                     setModelName(contents[0].name.replace(/\.scad$/i, "") || "Imported model");
@@ -641,7 +903,11 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
           </button>
         </aside>
       </section>
-      {notice && <div className="app-toast"><Check size={14} /> {notice}</div>}
+      {notice && (
+        <div className={`app-toast ${notice.kind === "error" ? "toast-error" : ""}`} role="status">
+          {notice.kind === "error" ? <TriangleAlert size={14} /> : <Check size={14} />} {notice.text}
+        </div>
+      )}
       {showPublishDialog && (
         <div className="modal-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowPublishDialog(false); }}>
           <form className="welcome-card publish-dialog" onSubmit={publishOwnedModel}>
@@ -658,11 +924,14 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
                 </label>
               </div>
             )}
+            {/* Update mode republishes content only — the model title is edited
+                via the Edit-details dialog, so offering it here would be a
+                silent no-op. */}
+            {(!social?.viewerIsOwner || publishMode === "new") && (<>
             <label className="publish-field">
               <span>Title</span>
               <input aria-label="Model title" maxLength={80} value={modelName} onChange={(event) => setModelName(event.target.value)} required />
             </label>
-            {(!social?.viewerIsOwner || publishMode === "new") && (<>
             <label className="publish-field">
               <span>Description</span>
               <textarea aria-label="Model description" maxLength={1000} rows={3} value={publishDescription} onChange={(event) => setPublishDescription(event.target.value)} placeholder="What does it print, and how is it customized?" />
@@ -691,6 +960,50 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
               <button type="button" className="ghost-button" onClick={() => setShowPublishDialog(false)}>Cancel</button>
               <button className="primary-button" type="submit" disabled={publishing || !modelName.trim()}>
                 {publishing ? <><LoaderCircle className="spinner" size={15} /> Publishing…</> : <><CloudUpload size={15} /> Publish</>}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+      {showEditDialog && social && (
+        <div className="modal-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowEditDialog(false); }}>
+          <form className="welcome-card publish-dialog" onSubmit={saveModelEdits}>
+            <h1>Edit model details</h1>
+            <label className="publish-field">
+              <span>Title</span>
+              <input aria-label="Model title" maxLength={80} value={editTitle} onChange={(event) => setEditTitle(event.target.value)} required />
+            </label>
+            <label className="publish-field">
+              <span>Description</span>
+              <textarea aria-label="Model description" maxLength={1000} rows={3} value={editDescription} onChange={(event) => setEditDescription(event.target.value)} />
+            </label>
+            <div className="publish-row">
+              <label className="publish-field">
+                <span>License</span>
+                <select aria-label="License" value={editLicense} onChange={(event) => setEditLicense(event.target.value as License)}>
+                  {LICENSES.map((license) => <option key={license} value={license}>{license}</option>)}
+                </select>
+              </label>
+              <label className="publish-field">
+                <span>Visibility</span>
+                <select aria-label="Visibility" value={editVisibility} onChange={(event) => setEditVisibility(event.target.value as Visibility)}>
+                  {VISIBILITIES.map((visibility) => <option key={visibility} value={visibility}>{visibility}</option>)}
+                </select>
+              </label>
+            </div>
+            <label className="publish-field">
+              <span>Tags <small>(comma separated, up to 12)</small></span>
+              <input aria-label="Tags" value={editTags} onChange={(event) => setEditTags(event.target.value)} placeholder="gears, robotics" />
+            </label>
+            {editError && <span className="welcome-problem"><TriangleAlert size={13} /> {editError}</span>}
+            <button type="button" className="ghost-button danger-button" onClick={deleteThisModel} disabled={deletingModel}>
+              {deletingModel ? <LoaderCircle className="spinner" size={14} /> : <Trash2 size={14} />}
+              {confirmingDelete ? " Really delete? Forks keep their copies. This cannot be undone." : " Delete model"}
+            </button>
+            <div className="publish-row">
+              <button type="button" className="ghost-button" onClick={() => setShowEditDialog(false)}>Cancel</button>
+              <button className="primary-button" type="submit" disabled={savingEdit || !editTitle.trim()}>
+                {savingEdit ? <><LoaderCircle className="spinner" size={15} /> Saving…</> : <><Check size={15} /> Save changes</>}
               </button>
             </div>
           </form>

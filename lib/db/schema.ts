@@ -118,6 +118,8 @@ export const models = pgTable("models", {
   forkedFromRevisionId: char("forked_from_revision_id", { length: 24 }).references(() => revisions.id),
   likeCount: integer("like_count").notNull().default(0),
   downloadCount: integer("download_count").notNull().default(0),
+  commentCount: integer("comment_count").notNull().default(0),
+  viewCount: integer("view_count").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   // immutable_tags_text is created in the same migration (drizzle does not
@@ -150,6 +152,18 @@ export const reports = pgTable("reports", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   resolvedAt: timestamp("resolved_at", { withTimezone: true }),
 });
+
+// Flat per-model discussion threads; comment_count on models is maintained
+// transactionally alongside inserts/deletes here (same pattern as likes).
+export const comments = pgTable("comments", {
+  id: text("id").primaryKey(),
+  modelId: text("model_id").notNull().references(() => models.id, { onDelete: "cascade" }),
+  authorId: text("author_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  body: text("body").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("comments_model_created_index").on(table.modelId, table.createdAt),
+]);
 
 // One positive vote per user per model (D9); like_count is maintained
 // transactionally alongside inserts/deletes here.

@@ -13,7 +13,11 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: ProfilePageProps): Promise<Metadata> {
   const { username } = await params;
-  return { title: `${username} — partcanvas.io` };
+  const listing = await listModelsByOwner(username);
+  if (!listing) return { title: `${username} — partcanvas.io` };
+  const title = `${listing.owner.username} — partcanvas.io`;
+  const description = listing.owner.bio || `Parametric 3D models by ${listing.owner.username} on partcanvas.io.`;
+  return { title, description, openGraph: { title, description, type: "profile" } };
 }
 
 export default async function ProfilePage({ params }: ProfilePageProps) {
@@ -32,7 +36,11 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
           {listing.owner.bio ? <p className="profile-bio">{listing.owner.bio}</p> : null}
         </section>
         {listing.models.length === 0 ? (
-          <p className="page-empty">No published models yet.</p>
+          <p className="page-empty">
+            {isOwner
+              ? <>No published models yet — <a href="/new">publish your first</a>.</>
+              : <>No published models yet.</>}
+          </p>
         ) : (
           <section className="model-grid">
             {listing.models.map((model) => (
@@ -42,6 +50,9 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
                 title={model.title}
                 likeCount={model.likeCount}
                 downloadCount={model.downloadCount}
+                commentCount={model.commentCount}
+                viewCount={model.viewCount}
+                createdAt={model.createdAt.toISOString()}
                 thumbnailUrl={`/api/models/${model.headRevisionId}/thumbnail`}
                 visibility={model.visibility}
               />

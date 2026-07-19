@@ -36,6 +36,13 @@
       "when": 1784365345704,
       "tag": "0004_chilly_blacklash",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1784424352143,
+      "tag": "0005_fresh_the_professor",
+      "breakpoints": true
     }
   ]
 }

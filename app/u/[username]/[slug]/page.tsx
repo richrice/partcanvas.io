@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { Workspace } from "@/components/Workspace";
 import { getPageSessionUser } from "@/lib/auth/session.server";
 import { hasLiked } from "@/lib/models/likes.server";
-import { getForkLineage, getModelByOwnerSlug, listModelVersions } from "@/lib/models/models.server";
+import { getForkLineage, getModelByOwnerSlug, listModelVersions, recordView } from "@/lib/models/models.server";
 import { readRevision } from "@/lib/models/revisions.server";
 import { canViewModel } from "@/lib/models/visibility";
 
@@ -24,12 +24,16 @@ async function loadVisibleModel(username: string, slug: string) {
 export async function generateMetadata({ params }: ModelPageProps): Promise<Metadata> {
   const { username, slug } = await params;
   const found = await loadVisibleModel(username, slug);
-  return found
-    ? {
-      title: `${found.model.title} by ${found.owner.username} — partcanvas.io`,
-      description: found.model.description || `Customize and print ${found.model.title}.`,
-    }
-    : { title: "Model not found — partcanvas.io" };
+  if (!found) return { title: "Model not found — partcanvas.io" };
+  const title = `${found.model.title} by ${found.owner.username} — partcanvas.io`;
+  const description = found.model.description || `Customize and print ${found.model.title}.`;
+  const thumbnail = `/api/models/${found.model.headRevisionId}/thumbnail`;
+  return {
+    title,
+    description,
+    openGraph: { title, description, type: "website", images: [thumbnail] },
+    twitter: { card: "summary_large_image", title, description, images: [thumbnail] },
+  };
 }
 
 export default async function ModelPage({ params }: ModelPageProps) {
@@ -41,6 +45,8 @@ export default async function ModelPage({ params }: ModelPageProps) {
   const viewerLiked = found.viewer ? await hasLiked(found.model.id, found.viewer.id) : false;
   const lineage = await getForkLineage(found.model);
   const versions = await listModelVersions(found.model.id);
+  // Owners browsing their own page don't count; failures must never block render.
+  if (found.viewer?.id !== found.model.ownerId) void recordView(found.model.id).catch(() => {});
   const forkLink = (fork: { title: string; slug: string; ownerUsername: string | null }) => ({
     title: fork.title,
     author: fork.ownerUsername ?? "",
@@ -48,6 +54,9 @@ export default async function ModelPage({ params }: ModelPageProps) {
   });
   return (
     <Workspace
+      // Remount on cross-model client navigation (e.g. fork → the new fork's
+      // page) so per-model state doesn't leak between models.
+      key={found.model.id}
       initialModel={{
         name: found.model.title,
         source: revision.source,
@@ -64,6 +73,11 @@ export default async function ModelPage({ params }: ModelPageProps) {
         authorName: found.owner.name,
         likeCount: found.model.likeCount,
         downloadCount: found.model.downloadCount,
+        commentCount: found.model.commentCount,
+        viewCount: found.model.viewCount + (found.viewer?.id !== found.model.ownerId ? 1 : 0),
+        visibility: found.model.visibility,
+        createdAt: found.model.createdAt.toISOString(),
+        updatedAt: found.model.updatedAt.toISOString(),
         tags: found.model.tags,
         viewerLiked,
         forkedFrom: lineage.forkedFrom ? forkLink(lineage.forkedFrom) : undefined,

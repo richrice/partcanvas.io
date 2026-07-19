@@ -92,6 +92,9 @@ export default async function HomePage({ searchParams }: HomePageProps) {
                 author={model.ownerUsername ?? undefined}
                 likeCount={model.likeCount}
                 downloadCount={model.downloadCount}
+                commentCount={model.commentCount}
+                viewCount={model.viewCount}
+                createdAt={model.createdAt.toISOString()}
                 thumbnailUrl={`/api/models/${model.headRevisionId}/thumbnail`}
                 visibility={model.visibility}
               />
@@ -100,6 +103,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
         )}
         <nav className="explore-pagination" aria-label="Pagination">
           {page > 1 ? <Link className="ghost-button" href={galleryHref({ q, tag, sort, page: page - 1 })}>← Previous</Link> : <span />}
+          {(page > 1 || results.hasMore) ? <span className="explore-page-indicator">Page {page}</span> : null}
           {results.hasMore ? <Link className="ghost-button" href={galleryHref({ q, tag, sort, page: page + 1 })}>Next →</Link> : <span />}
         </nav>
       </main>

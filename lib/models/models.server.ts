@@ -227,6 +227,22 @@ export async function findPublicModelByHeadRevision(revisionId: string, db: Data
   return row ?? null;
 }
 
+// Full lookup for /m/:id banners: head revisions resolve as before, and
+// historical versions resolve through the publish-history table so old
+// version permalinks aren't dead ends. `version` is null for the head.
+export async function findModelForRevision(revisionId: string, db: Database = getDb()): Promise<{ title: string; slug: string; ownerUsername: string | null; version: number | null } | null> {
+  const head = await findPublicModelByHeadRevision(revisionId, db);
+  if (head) return { ...head, version: null };
+  const [row] = await db.select({ title: models.title, slug: models.slug, ownerUsername: user.username, version: modelRevisions.version })
+    .from(modelRevisions)
+    .innerJoin(models, eq(modelRevisions.modelId, models.id))
+    .innerJoin(user, eq(models.ownerId, user.id))
+    .where(and(eq(modelRevisions.revisionId, revisionId), eq(models.visibility, "public")))
+    .orderBy(models.createdAt, desc(modelRevisions.version))
+    .limit(1);
+  return row ?? null;
+}
+
 // Fire-and-forget download counter (P3.6) — no dedup in v1.
 export async function recordDownload(modelId: string, db: Database = getDb()): Promise<number | null> {
   const [row] = await db.update(models)
@@ -234,6 +250,15 @@ export async function recordDownload(modelId: string, db: Database = getDb()): P
     .where(eq(models.id, modelId))
     .returning({ downloadCount: models.downloadCount });
   return row?.downloadCount ?? null;
+}
+
+// Fire-and-forget view counter, incremented on model-page render for
+// non-owner viewers. No dedup or bot filtering in v1 — same posture as
+// downloads.
+export async function recordView(modelId: string, db: Database = getDb()): Promise<void> {
+  await db.update(models)
+    .set({ viewCount: sql`${models.viewCount} + 1` })
+    .where(eq(models.id, modelId));
 }
 
 export type ExploreSort = "newest" | "liked";

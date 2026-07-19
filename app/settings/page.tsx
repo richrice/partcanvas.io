@@ -15,13 +15,24 @@ interface TokenSummary {
 
 function ApiTokensSection() {
   const [tokens, setTokens] = useState<TokenSummary[] | null>(null);
-  const [freshToken, setFreshToken] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  // The plaintext is shown once; remembering which row it belongs to keeps it
+  // on screen while *other* tokens are revoked.
+  const [freshToken, setFreshToken] = useState<{ id: string; token: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [tokenError, setTokenError] = useState<string | null>(null);
+  const [confirmingRevoke, setConfirmingRevoke] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    const response = await fetch("/api/app/tokens");
-    if (response.ok) setTokens(((await response.json()) as { tokens: TokenSummary[] }).tokens);
+    try {
+      const response = await fetch("/api/app/tokens");
+      if (!response.ok) throw new Error();
+      setTokens(((await response.json()) as { tokens: TokenSummary[] }).tokens);
+      setLoadFailed(false);
+    } catch {
+      setLoadFailed(true);
+    }
   }, []);
 
   useEffect(() => {
@@ -29,9 +40,13 @@ function ApiTokensSection() {
     fetch("/api/app/tokens")
       .then(async (response) => (response.ok ? ((await response.json()) as { tokens: TokenSummary[] }).tokens : null))
       .then((loaded) => {
-        if (!cancelled && loaded) setTokens(loaded);
+        if (cancelled) return;
+        if (loaded) setTokens(loaded);
+        else setLoadFailed(true);
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (!cancelled) setLoadFailed(true);
+      });
     return () => {
       cancelled = true;
     };
@@ -40,23 +55,36 @@ function ApiTokensSection() {
   const create = async () => {
     if (busy) return;
     setBusy(true);
+    setTokenError(null);
     try {
       const response = await fetch("/api/app/tokens", { method: "POST" });
-      const payload = await response.json() as { token?: string };
-      if (response.ok && payload.token) {
-        setFreshToken(payload.token);
-        setCopied(false);
-        await refresh();
-      }
+      const payload = await response.json().catch(() => ({})) as { token?: string; summary?: { id: string }; error?: string };
+      if (!response.ok || !payload.token) throw new Error(payload.error || "Could not create the token");
+      setFreshToken({ id: payload.summary?.id ?? "", token: payload.token });
+      setCopied(false);
+      await refresh();
+    } catch (error) {
+      setTokenError(error instanceof Error ? error.message : "Could not create the token");
     } finally {
       setBusy(false);
     }
   };
 
   const revoke = async (id: string) => {
-    await fetch(`/api/app/tokens/${id}`, { method: "DELETE" });
-    if (freshToken && tokens?.some((token) => token.id === id)) setFreshToken(null);
-    await refresh();
+    if (confirmingRevoke !== id) {
+      setConfirmingRevoke(id);
+      return;
+    }
+    setConfirmingRevoke(null);
+    setTokenError(null);
+    try {
+      const response = await fetch(`/api/app/tokens/${id}`, { method: "DELETE" });
+      if (!response.ok) throw new Error("Could not revoke the token");
+      if (freshToken?.id === id) setFreshToken(null);
+      await refresh();
+    } catch (error) {
+      setTokenError(error instanceof Error ? error.message : "Could not revoke the token");
+    }
   };
 
   return (
@@ -65,19 +93,24 @@ function ApiTokensSection() {
       <p>Bearer tokens authenticate programmatic publishing via <code>POST /api/models</code>. A token is shown once at creation — store it safely and revoke any you no longer use.</p>
       {freshToken && (
         <div className="token-fresh">
-          <code>{freshToken}</code>
-          <button className="ghost-button" type="button" onClick={() => { void navigator.clipboard.writeText(freshToken).then(() => setCopied(true)); }}>
+          <code>{freshToken.token}</code>
+          <button className="ghost-button" type="button" onClick={() => { void navigator.clipboard.writeText(freshToken.token).then(() => setCopied(true)); }}>
             {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? "Copied" : "Copy"}
           </button>
         </div>
       )}
-      {tokens === null ? <p className="page-empty">Loading…</p> : tokens.length === 0 ? <p className="page-empty">No tokens yet.</p> : (
+      {tokenError && <span className="welcome-problem"><TriangleAlert size={13} /> {tokenError}</span>}
+      {tokens === null
+        ? <p className="page-empty">{loadFailed ? "Could not load tokens — reload the page to retry." : "Loading…"}</p>
+        : tokens.length === 0 ? <p className="page-empty">No tokens yet.</p> : (
         <ul className="token-list">
           {tokens.map((token) => (
             <li key={token.id}>
               <code>{token.prefix}…</code>
               <span>created {new Date(token.createdAt).toLocaleDateString()}{token.lastUsedAt ? ` · last used ${new Date(token.lastUsedAt).toLocaleDateString()}` : " · never used"}</span>
-              <button className="ghost-button" type="button" onClick={() => void revoke(token.id)} title="Revoke token"><Trash2 size={14} /></button>
+              <button className="ghost-button" type="button" onClick={() => void revoke(token.id)} onBlur={() => setConfirmingRevoke(null)} title="Revoke token">
+                <Trash2 size={14} />{confirmingRevoke === token.id ? " Revoke?" : null}
+              </button>
             </li>
           ))}
         </ul>

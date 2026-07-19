@@ -11,7 +11,7 @@ The product is designed around two people:
 - Authors script parametric, printable 3D models.
 - Makers adjust a friendly parameter panel and download STL, STEP, and other fabrication formats without editing code.
 
-The community library is the front door, ShaderToy-style: the [home page](https://partcanvas.io) is a browsable, searchable gallery of published models, and the editor lives one click away at [`/new`](https://partcanvas.io/new). Sign in with GitHub or Google to publish models to a public profile at `/u/username`, and like, fork, or download other people's designs. Every published version keeps a permanent revision permalink at `/m/:id`, and each model page carries its license, tags, and counts.
+The community library is the front door, ShaderToy-style: the [home page](https://partcanvas.io) is a browsable, searchable gallery of published models, and the editor lives one click away at [`/new`](https://partcanvas.io/new). Sign in with GitHub or Google to publish models to a public profile at `/u/username`, and like, comment on, fork, or download other people's designs. Every published version keeps a permanent revision permalink at `/m/:id`, and each model page carries its license, clickable tags, view/download counts, dates, and a discussion thread. Owners can edit a model's details or delete it from the model page, and shared links unfurl with the model's thumbnail on Discord, Slack, and X.
 
 The same engine runs in the browser and behind an HTTP render API.
 
