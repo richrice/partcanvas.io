@@ -13,6 +13,8 @@ The product is designed around two people:
 
 The community library is the front door, ShaderToy-style: the [home page](https://partcanvas.io) is a browsable, searchable gallery of published models, and the editor lives one click away at [`/new`](https://partcanvas.io/new). Sign in with GitHub or Google to publish models to a public profile at `/u/username`, and like, comment on, fork, or download other people's designs. Every published version keeps a permanent revision permalink at `/m/:id`, and each model page carries its license, clickable tags, view/download counts, dates, and a discussion thread. Owners can edit a model's details or delete it from the model page, and shared links unfurl with the model's thumbnail on Discord, Slack, and X.
 
+The editor includes an FDM build-plate preview with common and custom printer profiles, safety margins, build-volume fit checks, 90-degree placement controls, material estimates, and geometry-based warnings for bed contact and severe overhangs. Printer preferences stay on the device, while model placement can be applied non-destructively when exporting.
+
 The same engine runs in the browser and behind an HTTP render API.
 
 ## Development

@@ -21,6 +21,7 @@ import {
   Maximize2,
   MessageSquare,
   Pencil,
+  Printer,
   Rotate3D,
   Send,
   Share2,
@@ -36,6 +37,7 @@ import { AuthMenu } from "./AuthMenu";
 import { CodeEditor, type CursorLocation } from "./CodeEditor";
 import { ModelViewport, type ViewPreset } from "./ModelViewport";
 import { ParameterPanel } from "./ParameterPanel";
+import { PrintFitBadge, PrintSetupPanel } from "./PrintSetupPanel";
 import { compileScadCached, CompileSupersededError, type CompileCacheTier } from "@/lib/compile-cache";
 import { serializeGeometry, type CompileResult, type ExportFormat } from "@/lib/scad/compiler";
 import { DEFAULT_SOURCE, EXAMPLES } from "@/lib/scad/examples";
@@ -47,6 +49,19 @@ import { authClient } from "@/lib/auth/client";
 import { LICENSES, VISIBILITIES, type License, type Visibility } from "@/lib/models/types";
 import { relativeTime } from "@/lib/relative-time";
 import { decodeSharedModel, encodeSharedModel } from "@/lib/share";
+import {
+  DEFAULT_MODEL_PLACEMENT,
+  DEFAULT_PRINT_SETTINGS,
+  analyzeBedFit,
+  analyzeFdmGeometry,
+  bestBedRotation,
+  estimateMaterial,
+  normalizePrintSettings,
+  placeGeometriesOnBed,
+  selectedPrinter,
+  type ModelPlacement,
+  type PrintSettings,
+} from "@/lib/fdm";
 
 const format = (value: number) => value >= 100 ? value.toFixed(0) : value >= 10 ? value.toFixed(1) : value.toFixed(2);
 
@@ -120,14 +135,18 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
   const [compiling, setCompiling] = useState(true);
   const [wireframe, setWireframe] = useState(false);
   const [autoRotate, setAutoRotate] = useState(false);
-  const [viewRequest, setViewRequest] = useState<{ view: ViewPreset; nonce: number }>({ view: "perspective", nonce: 0 });
-  const chooseView = (view: ViewPreset) => setViewRequest((current) => ({ view, nonce: current.nonce + 1 }));
+  const [viewRequest, setViewRequest] = useState<{ view: ViewPreset; nonce: number; frame?: "model" | "bed" }>({ view: "perspective", nonce: 0 });
+  const chooseView = (view: ViewPreset) => setViewRequest((current) => ({ view, nonce: current.nonce + 1, frame: "model" }));
   // Manual orbiting (or auto-rotate) leaves any standard view, so the tab bar
   // falls back to highlighting Perspective instead of lying about the camera.
   const leaveStandardView = useCallback(() => {
     setViewRequest((current) => current.view === "perspective" ? current : { view: "perspective", nonce: 0 });
   }, []);
   const [showExamples, setShowExamples] = useState(false);
+  const [showPrintSetup, setShowPrintSetup] = useState(false);
+  const [printSettings, setPrintSettings] = useState<PrintSettings>(DEFAULT_PRINT_SETTINGS);
+  const [printSettingsLoaded, setPrintSettingsLoaded] = useState(false);
+  const [placement, setPlacement] = useState<ModelPlacement>(DEFAULT_MODEL_PLACEMENT);
   const [exportFormat, setExportFormat] = useState<ExportFormat>("stl");
   const [mobilePanel, setMobilePanel] = useState<"code" | "preview" | "parameters">("preview");
   const [notice, setNotice] = useState<{ text: string; kind: "success" | "error" } | null>(null);
@@ -195,6 +214,22 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
     return () => window.clearTimeout(timeout);
   }, [initialModel]);
 
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      try {
+        const saved = window.localStorage.getItem("partcanvas.print-settings");
+        if (saved) setPrintSettings(normalizePrintSettings(JSON.parse(saved)));
+      } catch { /* Ignore malformed device-local printer preferences. */ }
+      setPrintSettingsLoaded(true);
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, []);
+
+  useEffect(() => {
+    if (!printSettingsLoaded) return;
+    window.localStorage.setItem("partcanvas.print-settings", JSON.stringify(printSettings));
+  }, [printSettings, printSettingsLoaded]);
+
   // Compiles resolve asynchronously (the cache's persistent tier is async),
   // so a run counter drops stale completions when the source or parameters
   // changed again mid-flight.
@@ -225,6 +260,17 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
   const effectiveExportFormat: ExportFormat = result?.dimension === 2
     ? (["svg", "dxf"].includes(exportFormat) ? exportFormat : "svg")
     : (["stl", "obj", "3mf", "step"].includes(exportFormat) ? exportFormat : "stl");
+  const printer = useMemo(() => selectedPrinter(printSettings), [printSettings]);
+  const modelBounds = result?.dimension === 3 ? result.metrics.bounds : null;
+  const bedFit = useMemo(() => modelBounds
+    ? analyzeBedFit(modelBounds, printer, printSettings.safetyMargin, placement)
+    : null, [modelBounds, placement, printSettings.safetyMargin, printer]);
+  const fdmGeometry = useMemo(() => result?.dimension === 3 && result.geometry && modelBounds
+    ? analyzeFdmGeometry(result.parts.length ? result.parts : result.geometry, modelBounds)
+    : null, [modelBounds, result]);
+  const materialEstimate = result?.metrics.volume !== null && result?.metrics.volume !== undefined
+    ? estimateMaterial(result.metrics.volume, printSettings.materialId, printSettings.filamentDiameter)
+    : null;
 
   // The debounce exists to coalesce keystrokes; the first compile of a page
   // view has nothing to coalesce, and delaying it just adds to the time
@@ -250,6 +296,7 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
     setProjectFiles({});
     setSelectedPreset("");
     setActiveFile("main.scad");
+    setPlacement(DEFAULT_MODEL_PLACEMENT);
     setShowExamples(false);
   };
 
@@ -260,7 +307,10 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
       setDownloadCount((count) => count + 1);
       void fetch(`/api/models/${social.modelId}/download`, { method: "POST", keepalive: true }).catch(() => undefined);
     }
-    const serialized = serializeGeometry(result.parts.length ? result.parts : result.geometry, effectiveExportFormat, modelName || "partcanvas-model");
+    const exportGeometry = result.dimension === 3 && modelBounds && printSettings.exportPlacement
+      ? placeGeometriesOnBed(result.parts.length ? result.parts : [result.geometry], modelBounds, placement)
+      : result.parts.length ? result.parts : result.geometry;
+    const serialized = serializeGeometry(exportGeometry, effectiveExportFormat, modelName || "partcanvas-model");
     const data = serialized.data;
     const blob = new Blob([data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer], { type: serialized.mimeType });
     const url = URL.createObjectURL(blob);
@@ -530,19 +580,20 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
     return () => window.removeEventListener("mousedown", close);
   }, [anyMenuOpen]);
   useEffect(() => {
-    if (!anyMenuOpen && !showPublishDialog && !showEditDialog) return;
+    if (!anyMenuOpen && !showPublishDialog && !showEditDialog && !showPrintSetup) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       setShowExamples(false);
       setShowVersions(false);
       setShowForks(false);
       setShowReport(false);
+      setShowPrintSetup(false);
       setShowPublishDialog(false);
       setShowEditDialog(false);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [anyMenuOpen, showPublishDialog, showEditDialog]);
+  }, [anyMenuOpen, showPublishDialog, showEditDialog, showPrintSetup]);
 
   const openEditDialog = () => {
     if (!social) return;
@@ -629,6 +680,15 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
     setProjectFiles((current) => ({ ...current, [name]: "// Reusable modules and functions\n" }));
     setActiveFile(name);
   };
+  const chooseBestBedFit = () => {
+    if (!modelBounds) return;
+    setPlacement({ x: 0, y: 0, rotationZ: bestBedRotation(modelBounds, printer, printSettings.safetyMargin) });
+  };
+  const frameBuildPlate = () => setViewRequest((current) => ({
+    view: current.view,
+    nonce: current.nonce + 1,
+    frame: "bed",
+  }));
   const consoleItems = [
     ...(result?.messages.map((message) => ({ kind: "message", text: message })) ?? []),
     ...(result?.warnings.map((message) => ({ kind: "warning", text: message })) ?? []),
@@ -910,16 +970,46 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
               ))}
             </div>
             <div className="toolbar-actions">
+              <button className={`print-setup-toggle ${showPrintSetup ? "active-tool" : ""}`} onClick={() => setShowPrintSetup((value) => !value)} title="Printer and build plate settings"><Printer size={15} /><span>Bed</span></button>
               <button className={wireframe ? "active-tool" : ""} onClick={() => setWireframe((value) => !value)} title="Toggle wireframe"><Braces size={15} /></button>
               <button className={autoRotate ? "active-tool" : ""} onClick={() => { setAutoRotate((value) => !value); leaveStandardView(); }} title="Auto rotate"><Rotate3D size={15} /></button>
               <button title="Fit view" onClick={() => chooseView(viewRequest.view)}><Maximize2 size={15} /></button>
             </div>
           </div>
           <div className="viewport-wrap">
-            <ModelViewport geometries={result?.parts ?? []} wireframe={wireframe} autoRotate={autoRotate} viewRequest={viewRequest} onUserOrbit={leaveStandardView} captureRef={thumbnailCaptureRef} />
+            <ModelViewport
+              geometries={result?.parts ?? []}
+              wireframe={wireframe}
+              autoRotate={autoRotate}
+              viewRequest={viewRequest}
+              printer={printer}
+              safetyMargin={printSettings.safetyMargin}
+              placement={placement}
+              showBed={printSettings.showBed && result?.dimension !== 2}
+              showBuildVolume={printSettings.showBuildVolume}
+              modelFits={bedFit?.fits ?? true}
+              onUserOrbit={leaveStandardView}
+              captureRef={thumbnailCaptureRef}
+            />
             <div className={`render-status ${error ? "error" : ""}`}>
               {compiling ? <><LoaderCircle className="spinner" size={14} /> Compiling…</> : error ? <><TriangleAlert size={14} /> {error}</> : <><span className="status-dot" /> Ready</>}
             </div>
+            {result?.dimension !== 2 ? <PrintFitBadge printer={printer} fit={bedFit} onClick={() => setShowPrintSetup(true)} /> : null}
+            <PrintSetupPanel
+              open={showPrintSetup && result?.dimension !== 2}
+              settings={printSettings}
+              printer={printer}
+              placement={placement}
+              fit={bedFit}
+              geometry={fdmGeometry}
+              material={materialEstimate}
+              hasModel={Boolean(result?.geometry && result.dimension === 3)}
+              onClose={() => setShowPrintSetup(false)}
+              onSettingsChange={setPrintSettings}
+              onPlacementChange={setPlacement}
+              onBestFit={chooseBestBedFit}
+              onFitPlate={frameBuildPlate}
+            />
             {dimensions && (
               <div className="dimension-card">
                 <span>MODEL SIZE</span>
