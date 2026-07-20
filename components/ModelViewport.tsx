@@ -219,17 +219,32 @@ function createBedVisual(printer: PrinterProfile, safetyMargin: number, showBuil
   group.add(new THREE.LineSegments(axesGeometry, new THREE.LineBasicMaterial({ color: 0x8bdccb, transparent: true, opacity: 0.9 })));
 
   if (showBuildVolume) {
-    const volumeGeometry = printer.bedShape === "circular"
-      ? new THREE.CylinderGeometry(Math.min(printer.width, printer.depth) / 2, Math.min(printer.width, printer.depth) / 2, printer.height, 48, 1, true)
-      : new THREE.BoxGeometry(printer.width, printer.depth, printer.height);
-    if (printer.bedShape === "circular") volumeGeometry.rotateX(Math.PI / 2);
-    const volume = new THREE.LineSegments(
-      new THREE.EdgesGeometry(volumeGeometry, 35),
-      new THREE.LineBasicMaterial({ color: outlineColor, transparent: true, opacity: 0.14 }),
+    // Draw only the vertical posts and top boundary. EdgesGeometry also emits
+    // a bottom perimeter at z=0, where it competes with the brighter bed
+    // outline in the depth buffer and visibly flickers while orbiting.
+    const top = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(boundaryPoints(printer.width, printer.depth, printer.bedShape, printer.height)),
+      new THREE.LineBasicMaterial({ color: outlineColor, transparent: true, opacity: 0.16 }),
     );
-    volume.position.z = printer.height / 2;
-    group.add(volume);
-    volumeGeometry.dispose();
+    group.add(top);
+
+    const postPositions: number[] = [];
+    const posts = printer.bedShape === "circular"
+      ? Array.from({ length: 8 }, (_, index) => {
+        const angle = index / 8 * Math.PI * 2;
+        const radius = Math.min(printer.width, printer.depth) / 2;
+        return [Math.cos(angle) * radius, Math.sin(angle) * radius];
+      })
+      : [
+        [-printer.width / 2, -printer.depth / 2],
+        [printer.width / 2, -printer.depth / 2],
+        [printer.width / 2, printer.depth / 2],
+        [-printer.width / 2, printer.depth / 2],
+      ];
+    for (const [x, y] of posts) postPositions.push(x, y, 0.12, x, y, printer.height);
+    const postGeometry = new THREE.BufferGeometry();
+    postGeometry.setAttribute("position", new THREE.Float32BufferAttribute(postPositions, 3));
+    group.add(new THREE.LineSegments(postGeometry, new THREE.LineBasicMaterial({ color: outlineColor, transparent: true, opacity: 0.12 })));
   }
 
   return group;
