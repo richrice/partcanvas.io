@@ -135,8 +135,18 @@ function fitView(current: ViewportState, view: ViewPreset = "perspective", frame
   // large models (e.g. automotive trim) so the fitted view isn't fogged out.
   const fog = current.scene.fog as THREE.Fog | null;
   if (fog) {
-    fog.near = Math.max(180, radius * 1.8);
-    fog.far = Math.max(520, radius * 6);
+    if (frameBed) {
+      // Keep the complete selected bed outside the fog band. A plate-framed
+      // camera is farther away than a model-framed camera, and the previous
+      // radius-only threshold began fading the far half of the plate.
+      const cameraDistance = current.camera.position.distanceTo(center);
+      const framedRadius = size.length() / 2;
+      fog.near = Math.max(180, cameraDistance + framedRadius * 1.05);
+      fog.far = Math.max(520, fog.near + radius * 3.5);
+    } else {
+      fog.near = Math.max(180, radius * 1.8);
+      fog.far = Math.max(520, radius * 6);
+    }
   }
   current.controls.maxDistance = Math.max(800, radius * 8);
   current.controls.update();
