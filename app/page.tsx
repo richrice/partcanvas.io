@@ -95,7 +95,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
                 commentCount={model.commentCount}
                 viewCount={model.viewCount}
                 createdAt={model.createdAt.toISOString()}
-                thumbnailUrl={`/api/models/${model.headRevisionId}/thumbnail`}
+                thumbnailUrl={`/api/models/${model.headRevisionId}/thumbnail?v=${model.thumbnailVersion ?? 0}`}
                 visibility={model.visibility}
               />
             ))}

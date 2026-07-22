@@ -34,6 +34,7 @@ export const revisions = pgTable("revisions", {
   id: char("id", { length: 24 }).primaryKey(),
   record: jsonb("record").$type<HostedModel>().notNull(),
   thumbnail: bytea("thumbnail"),
+  thumbnailVersion: integer("thumbnail_version"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

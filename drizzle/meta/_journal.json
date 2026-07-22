@@ -43,6 +43,13 @@
       "when": 1784424352143,
       "tag": "0005_fresh_the_professor",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1784740069351,
+      "tag": "0006_fantastic_enchantress",
+      "breakpoints": true
     }
   ]
 }

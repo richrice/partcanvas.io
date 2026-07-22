@@ -1,7 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { revisions } from "../db/schema";
 import { createTestDatabase } from "../db/test-db.server";
-import { readRevision, readRevisionThumbnail, saveRevision, setRevisionThumbnail } from "./revisions.server";
+import {
+  readRevision,
+  readRevisionThumbnail,
+  readRevisionThumbnailState,
+  saveRevision,
+  setRevisionThumbnail,
+} from "./revisions.server";
 
 let testDb: Awaited<ReturnType<typeof createTestDatabase>>;
 
@@ -75,14 +81,43 @@ describe("revision store", () => {
     expect(await readRevision("a".repeat(24), testDb.db)).toBeNull();
   });
 
-  it("sets a thumbnail exactly once and reads it back", async () => {
+  it("stores thumbnails by generation and reads their state", async () => {
     const { record } = await saveRevision({ name: "Thumbed", source: "cube([2, 2, 2]);" }, testDb.db);
     const first = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1]);
-    expect(await setRevisionThumbnail(record.id, first, testDb.db)).toBe(true);
-    expect(await setRevisionThumbnail(record.id, new Uint8Array([0x00]), testDb.db)).toBe(false);
-    const stored = await readRevisionThumbnail(record.id, testDb.db);
-    expect([...stored!]).toEqual([...first]);
+    const second = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 2]);
+
+    expect(await readRevisionThumbnailState(record.id, testDb.db)).toEqual({ present: false, version: null });
+    expect(await setRevisionThumbnail(record.id, first, 1, testDb.db)).toBe(true);
+    expect(await readRevisionThumbnailState(record.id, testDb.db)).toEqual({ present: true, version: 1 });
+    expect([...((await readRevisionThumbnail(record.id, testDb.db))!)]).toEqual([...first]);
+
+    expect(await setRevisionThumbnail(record.id, second, 1, testDb.db)).toBe(false);
+    expect([...((await readRevisionThumbnail(record.id, testDb.db))!)]).toEqual([...first]);
+
+    expect(await setRevisionThumbnail(record.id, second, 2, testDb.db)).toBe(true);
+    expect([...((await readRevisionThumbnail(record.id, testDb.db))!)]).toEqual([...second]);
+    expect(await readRevisionThumbnailState(record.id, testDb.db)).toEqual({ present: true, version: 2 });
+
+    expect(await readRevisionThumbnailState("b".repeat(24), testDb.db)).toBeNull();
+    expect(await readRevisionThumbnailState("bogus", testDb.db)).toBeNull();
     expect(await readRevisionThumbnail("b".repeat(24), testDb.db)).toBeNull();
     expect(await readRevisionThumbnail("bogus", testDb.db)).toBeNull();
+  });
+
+  it("overwrites a legacy thumbnail whose version is null", async () => {
+    const { record: seed } = await saveRevision({ name: "Legacy thumbnail", source: "cube([3, 3, 3]);" }, testDb.db);
+    const id = "d".repeat(24);
+    const legacy = new Uint8Array([1, 2, 3]);
+    const current = new Uint8Array([4, 5, 6]);
+    await testDb.db.insert(revisions).values({
+      id,
+      record: { ...seed, id },
+      thumbnail: legacy,
+    });
+
+    expect(await readRevisionThumbnailState(id, testDb.db)).toEqual({ present: true, version: null });
+    expect(await setRevisionThumbnail(id, current, 1, testDb.db)).toBe(true);
+    expect([...((await readRevisionThumbnail(id, testDb.db))!)]).toEqual([...current]);
+    expect(await readRevisionThumbnailState(id, testDb.db)).toEqual({ present: true, version: 1 });
   });
 });

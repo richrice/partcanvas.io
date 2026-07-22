@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { and, arrayContains, count, desc, eq, sql, type SQL } from "drizzle-orm";
 import { getDb, type Database } from "../db/client.server";
 import { isUniqueViolation } from "../db/errors.server";
-import { modelRevisions, models, user } from "../db/schema";
+import { modelRevisions, models, revisions, user } from "../db/schema";
 import { LICENSES, VISIBILITIES, type License, type Visibility } from "./types";
 
 // Store for the mutable social object layered over immutable revisions (§2).
@@ -272,7 +272,7 @@ export interface ExploreOptions {
 }
 
 export interface ExploreResult {
-  models: (ModelRow & { ownerUsername: string | null })[];
+  models: (ModelRow & { ownerUsername: string | null; thumbnailVersion: number | null })[];
   page: number;
   hasMore: boolean;
 }
@@ -288,8 +288,9 @@ export async function exploreModels(options: ExploreOptions = {}, db: Database =
   if (tag) conditions.push(arrayContains(models.tags, [tag]));
   const query = options.query?.trim();
   if (query) conditions.push(sql`${models.search} @@ websearch_to_tsquery('english', ${query})`);
-  const rows = await db.select({ model: models, ownerUsername: user.username })
+  const rows = await db.select({ model: models, ownerUsername: user.username, thumbnailVersion: revisions.thumbnailVersion })
     .from(models)
+    .innerJoin(revisions, eq(models.headRevisionId, revisions.id))
     .innerJoin(user, eq(models.ownerId, user.id))
     .where(and(...conditions))
     .orderBy(...(options.sort === "liked"
@@ -298,7 +299,11 @@ export async function exploreModels(options: ExploreOptions = {}, db: Database =
     .limit(pageSize + 1)
     .offset((page - 1) * pageSize);
   return {
-    models: rows.slice(0, pageSize).map((row) => ({ ...row.model, ownerUsername: row.ownerUsername })),
+    models: rows.slice(0, pageSize).map((row) => ({
+      ...row.model,
+      ownerUsername: row.ownerUsername,
+      thumbnailVersion: row.thumbnailVersion,
+    })),
     page,
     hasMore: rows.length > pageSize,
   };
@@ -307,13 +312,14 @@ export async function exploreModels(options: ExploreOptions = {}, db: Database =
 // Profile listing: public models only, unless the viewer is the owner —
 // unlisted/private models never appear in another user's view of a profile
 // (D10: unlisted resolves by direct link only).
-export async function listModelsByOwner(username: string, options: { viewerId?: string } = {}, db: Database = getDb()): Promise<{ owner: ModelOwner; models: ModelRow[] } | null> {
+export async function listModelsByOwner(username: string, options: { viewerId?: string } = {}, db: Database = getDb()): Promise<{ owner: ModelOwner; models: (ModelRow & { thumbnailVersion: number | null })[] } | null> {
   const [owner] = await db.select({ id: user.id, username: user.username, name: user.name, bio: user.bio }).from(user).where(eq(user.username, username)).limit(1);
   if (!owner) return null;
-  const rows = await db.select().from(models)
+  const rows = await db.select({ model: models, thumbnailVersion: revisions.thumbnailVersion }).from(models)
+    .innerJoin(revisions, eq(models.headRevisionId, revisions.id))
     .where(options.viewerId === owner.id
       ? eq(models.ownerId, owner.id)
       : and(eq(models.ownerId, owner.id), eq(models.visibility, "public")))
     .orderBy(desc(models.updatedAt), desc(models.createdAt));
-  return { owner, models: rows };
+  return { owner, models: rows.map((row) => ({ ...row.model, thumbnailVersion: row.thumbnailVersion })) };
 }

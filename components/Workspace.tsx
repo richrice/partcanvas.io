@@ -95,6 +95,7 @@ export interface SocialChromeModel {
   forkCount: number;
   forks: { title: string; author: string; url: string }[];
   viewerIsOwner: boolean;
+  thumbnailStale?: boolean;
   versions: { version: number; revisionId: string; publishedAt: string }[];
 }
 
@@ -129,6 +130,11 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
     }
   }, [source, projectFiles]);
   const [parameters, setParameters] = useState<Record<string, ParameterValue>>(() => ({ ...defaultParameterValues(definitions), ...(initialModel?.parameters ?? {}) }));
+  const initialDocument = useRef({
+    source,
+    projectFiles: JSON.stringify(projectFiles),
+    parameters: JSON.stringify(parameters),
+  });
   const [selectedPreset, setSelectedPreset] = useState("");
   const [result, setResult] = useState<CompileResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -165,6 +171,8 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
   const [cursorLocation, setCursorLocation] = useState<CursorLocation>({ line: 1, column: 1 });
   const uploadRef = useRef<HTMLInputElement>(null);
   const thumbnailCaptureRef = useRef<(() => string | null) | null>(null);
+  const thumbnailSelfHealStarted = useRef(false);
+  const thumbnailSelfHealSent = useRef(false);
   // One shared toast pipeline: later notices replace earlier ones instead of
   // being clipped by a stale timer, and errors render distinctly from success.
   const noticeTimer = useRef<number | null>(null);
@@ -287,6 +295,57 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
     }
     return () => window.clearTimeout(timeout);
   }, [compile, source, projectFiles, initialModel]);
+
+  useEffect(() => {
+    if (!social?.viewerIsOwner || !social.thumbnailStale || !initialModel?.hostedId
+      || compiling || !result?.geometry || thumbnailSelfHealStarted.current) return;
+    if (source !== initialDocument.current.source
+      || JSON.stringify(projectFiles) !== initialDocument.current.projectFiles
+      || JSON.stringify(parameters) !== initialDocument.current.parameters) return;
+
+    let timeout: number | null = null;
+    let cancelled = false;
+    let retries = 0;
+    const capture = () => {
+      if (cancelled) return;
+      if (source !== initialDocument.current.source
+        || JSON.stringify(projectFiles) !== initialDocument.current.projectFiles
+        || JSON.stringify(parameters) !== initialDocument.current.parameters) return;
+
+      let thumbnail: string | null | undefined;
+      try {
+        thumbnail = thumbnailCaptureRef.current?.();
+      } catch {
+        return;
+      }
+      if (!thumbnail) {
+        if (retries < 5) {
+          retries += 1;
+          timeout = window.setTimeout(capture, 500);
+        }
+        return;
+      }
+      if (thumbnailSelfHealSent.current) return;
+      thumbnailSelfHealSent.current = true;
+      void fetch(`/api/app/models/${social.modelId}/thumbnail`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ revisionId: initialModel.hostedId, thumbnail }),
+      }).catch(() => {});
+    };
+
+    // Defer the first attempt so React's development-only effect replay can
+    // clean up without consuming this mount's single capture sequence.
+    timeout = window.setTimeout(() => {
+      if (cancelled) return;
+      thumbnailSelfHealStarted.current = true;
+      capture();
+    }, 0);
+    return () => {
+      cancelled = true;
+      if (timeout !== null) window.clearTimeout(timeout);
+    };
+  }, [compiling, initialModel?.hostedId, parameters, projectFiles, result, social?.modelId, social?.thumbnailStale, social?.viewerIsOwner, source]);
 
   const chooseExample = (index: number) => {
     const example = EXAMPLES[index];

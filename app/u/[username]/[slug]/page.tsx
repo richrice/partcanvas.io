@@ -4,7 +4,8 @@ import { Workspace } from "@/components/Workspace";
 import { getPageSessionUser } from "@/lib/auth/session.server";
 import { hasLiked } from "@/lib/models/likes.server";
 import { getForkLineage, getModelByOwnerSlug, listModelVersions, recordView } from "@/lib/models/models.server";
-import { readRevision } from "@/lib/models/revisions.server";
+import { readRevision, readRevisionThumbnailState } from "@/lib/models/revisions.server";
+import { THUMBNAIL_VERSION } from "@/lib/models/thumbnails.server";
 import { canViewModel } from "@/lib/models/visibility";
 
 interface ModelPageProps {
@@ -27,7 +28,8 @@ export async function generateMetadata({ params }: ModelPageProps): Promise<Meta
   if (!found) return { title: "Model not found — partcanvas.io" };
   const title = `${found.model.title} by ${found.owner.username} — partcanvas.io`;
   const description = found.model.description || `Customize and print ${found.model.title}.`;
-  const thumbnail = `/api/models/${found.model.headRevisionId}/thumbnail`;
+  const thumbnailState = await readRevisionThumbnailState(found.model.headRevisionId);
+  const thumbnail = `/api/models/${found.model.headRevisionId}/thumbnail?v=${thumbnailState?.version ?? 0}`;
   return {
     title,
     description,
@@ -42,6 +44,8 @@ export default async function ModelPage({ params }: ModelPageProps) {
   if (!found) notFound();
   const revision = await readRevision(found.model.headRevisionId);
   if (!revision) notFound();
+  const thumbnailState = await readRevisionThumbnailState(found.model.headRevisionId);
+  const thumbnailStale = !thumbnailState?.present || (thumbnailState.version ?? 0) < THUMBNAIL_VERSION;
   const viewerLiked = found.viewer ? await hasLiked(found.model.id, found.viewer.id) : false;
   const lineage = await getForkLineage(found.model);
   const versions = await listModelVersions(found.model.id);
@@ -84,6 +88,7 @@ export default async function ModelPage({ params }: ModelPageProps) {
         forkCount: lineage.forkCount,
         forks: lineage.forks.map(forkLink),
         viewerIsOwner: found.viewer?.id === found.model.ownerId,
+        thumbnailStale,
         versions: versions.map((entry) => ({ version: entry.version, revisionId: entry.revisionId, publishedAt: entry.publishedAt.toISOString() })),
       }}
     />

@@ -1,4 +1,4 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { getDb, type Database } from "../db/client.server";
 import { revisions } from "../db/schema";
 import { compileScad } from "../scad/compiler";
@@ -41,15 +41,35 @@ export async function readRevision(id: string, db: Database = getDb()): Promise<
   return record?.version === 1 && record.id === id && typeof record.source === "string" ? record : null;
 }
 
-// Thumbnails are immutable once set, like the revision content they belong to
-// (D8): the guarded update keeps the first capture and ignores later ones.
-export async function setRevisionThumbnail(id: string, png: Uint8Array, db: Database = getDb()): Promise<boolean> {
+// Thumbnail bytes are immutable within a generation (D8); only a newer
+// generation may overwrite the stored capture.
+export async function setRevisionThumbnail(id: string, png: Uint8Array, version: number, db: Database = getDb()): Promise<boolean> {
   if (!CONTENT_ID.test(id)) return false;
   const updated = await db.update(revisions)
-    .set({ thumbnail: png })
-    .where(and(eq(revisions.id, id), isNull(revisions.thumbnail)))
+    .set({ thumbnail: png, thumbnailVersion: version })
+    .where(and(
+      eq(revisions.id, id),
+      or(
+        isNull(revisions.thumbnail),
+        isNull(revisions.thumbnailVersion),
+        lt(revisions.thumbnailVersion, version),
+      ),
+    ))
     .returning({ id: revisions.id });
   return updated.length > 0;
+}
+
+export async function readRevisionThumbnailState(
+  id: string,
+  db: Database = getDb(),
+): Promise<{ present: boolean; version: number | null } | null> {
+  if (!CONTENT_ID.test(id)) return null;
+  const [row] = await db.select({
+    present: sql<boolean>`${revisions.thumbnail} is not null`,
+    version: revisions.thumbnailVersion,
+  }).from(revisions).where(eq(revisions.id, id)).limit(1);
+  if (!row) return null;
+  return row;
 }
 
 export async function readRevisionThumbnail(id: string, db: Database = getDb()): Promise<Uint8Array | null> {

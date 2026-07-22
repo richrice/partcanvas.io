@@ -3,7 +3,7 @@ import { getSessionUser } from "@/lib/auth/session.server";
 import { getDb } from "@/lib/db/client.server";
 import { publishModelVersion, readModel } from "@/lib/models/models.server";
 import { saveRevision, setRevisionThumbnail } from "@/lib/models/revisions.server";
-import { decodeThumbnailDataUrl } from "@/lib/models/thumbnails.server";
+import { decodeThumbnailDataUrl, THUMBNAIL_VERSION } from "@/lib/models/thumbnails.server";
 import type { HostedModelDraft } from "@/lib/models/types";
 
 // Cookie-authenticated (D5): no corsPreflight export, no permissive CORS.
@@ -39,7 +39,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       return Response.json({ error: "This is already the current version — nothing changed" }, { status: 409 });
     }
     const thumbnail = decodeThumbnailDataUrl(body.thumbnail);
-    if (thumbnail) await setRevisionThumbnail(record.id, thumbnail, db);
+    if (thumbnail) await setRevisionThumbnail(record.id, thumbnail, THUMBNAIL_VERSION, db);
     const { version } = await publishModelVersion(model.id, record.id, db);
     return Response.json({ version, revision: { id: record.id } }, {
       status: 201,

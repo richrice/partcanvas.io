@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { Workspace } from "@/components/Workspace";
 import { hasDatabase } from "@/lib/db/client.server";
 import { findModelForRevision } from "@/lib/models/models.server";
-import { readRevision } from "@/lib/models/revisions.server";
+import { readRevision, readRevisionThumbnailState } from "@/lib/models/revisions.server";
 
 async function resolveHostedModel(id: string) {
   return hasDatabase() ? readRevision(id) : null;
@@ -20,7 +20,8 @@ export async function generateMetadata({ params }: ModelPageProps): Promise<Meta
   if (!model) return { title: "Model not found — partcanvas.io" };
   const title = `${model.name} — partcanvas.io`;
   const description = model.description || `Customize and print ${model.name}.`;
-  const thumbnail = `/api/models/${model.id}/thumbnail`;
+  const thumbnailState = await readRevisionThumbnailState(model.id);
+  const thumbnail = `/api/models/${model.id}/thumbnail?v=${thumbnailState?.version ?? 0}`;
   return {
     title,
     description,

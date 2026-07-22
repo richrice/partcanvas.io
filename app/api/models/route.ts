@@ -4,7 +4,7 @@ import { resolveApiToken } from "@/lib/auth/tokens.server";
 import { getDb } from "@/lib/db/client.server";
 import { createModel, publishModelVersion, readModel } from "@/lib/models/models.server";
 import { saveRevision, setRevisionThumbnail } from "@/lib/models/revisions.server";
-import { decodeThumbnailDataUrl } from "@/lib/models/thumbnails.server";
+import { decodeThumbnailDataUrl, THUMBNAIL_VERSION } from "@/lib/models/thumbnails.server";
 import type { HostedModelDraft } from "@/lib/models/types";
 
 export const runtime = "nodejs";
@@ -54,7 +54,7 @@ export async function POST(request: Request) {
         return Response.json({ error: "This is already the current version — nothing changed" }, { status: 409, headers: CORS_HEADERS });
       }
       const thumbnail = decodeThumbnailDataUrl(body.thumbnail);
-      if (thumbnail) await setRevisionThumbnail(record.id, thumbnail, db);
+      if (thumbnail) await setRevisionThumbnail(record.id, thumbnail, THUMBNAIL_VERSION, db);
       const { version } = await publishModelVersion(model.id, record.id, db);
       return Response.json({ version, revision: { id: record.id }, url: `/m/${record.id}` }, {
         status: 201,
@@ -67,7 +67,7 @@ export async function POST(request: Request) {
     }
     const { record } = await saveRevision(body, db);
     const thumbnail = decodeThumbnailDataUrl(body.thumbnail);
-    if (thumbnail) await setRevisionThumbnail(record.id, thumbnail, db);
+    if (thumbnail) await setRevisionThumbnail(record.id, thumbnail, THUMBNAIL_VERSION, db);
     const model = await createModel({
       ownerId: tokenUser.id,
       title: body.name,

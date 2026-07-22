@@ -2,8 +2,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { modelRevisions, user } from "../db/schema";
 import { createTestDatabase } from "../db/test-db.server";
-import { createModel, findModelForRevision, findPublicModelByHeadRevision, getForkLineage, getModelByOwnerSlug, listModelsByOwner, publishModelVersion, readModel, slugify } from "./models.server";
-import { saveRevision } from "./revisions.server";
+import { createModel, exploreModels, findModelForRevision, findPublicModelByHeadRevision, getForkLineage, getModelByOwnerSlug, listModelsByOwner, publishModelVersion, readModel, slugify } from "./models.server";
+import { saveRevision, setRevisionThumbnail } from "./revisions.server";
+import { THUMBNAIL_VERSION } from "./thumbnails.server";
 
 let testDb: Awaited<ReturnType<typeof createTestDatabase>>;
 let revisionId = "";
@@ -88,6 +89,23 @@ describe("model store", () => {
     const ownerView = await listModelsByOwner("owner-one", { viewerId: "owner-1" }, testDb.db);
     expect(ownerView!.models.length).toBeGreaterThan(publicView!.models.length);
     expect(await listModelsByOwner("ghost", {}, testDb.db)).toBeNull();
+  });
+
+  it("returns the head revision thumbnail version in explore and owner listings", async () => {
+    const saved = await saveRevision({ name: "Thumbnail version probe", source: "cube([10, 11, 12]);" }, testDb.db);
+    const model = await createModel({ ownerId: "owner-2", title: "Thumbnail version probe", revisionId: saved.record.id }, testDb.db);
+
+    const beforeExplore = await exploreModels({ query: "Thumbnail version probe" }, testDb.db);
+    expect(beforeExplore.models.find((row) => row.id === model.id)?.thumbnailVersion).toBeNull();
+    const beforeOwner = await listModelsByOwner("owner-two", {}, testDb.db);
+    expect(beforeOwner?.models.find((row) => row.id === model.id)?.thumbnailVersion).toBeNull();
+
+    expect(await setRevisionThumbnail(saved.record.id, new Uint8Array([0x89, 0x50, 0x4e, 0x47]), THUMBNAIL_VERSION, testDb.db)).toBe(true);
+
+    const afterExplore = await exploreModels({ query: "Thumbnail version probe" }, testDb.db);
+    expect(afterExplore.models.find((row) => row.id === model.id)?.thumbnailVersion).toBe(THUMBNAIL_VERSION);
+    const afterOwner = await listModelsByOwner("owner-two", {}, testDb.db);
+    expect(afterOwner?.models.find((row) => row.id === model.id)?.thumbnailVersion).toBe(THUMBNAIL_VERSION);
   });
 
   it("maps a head revision back to the oldest public model", async () => {

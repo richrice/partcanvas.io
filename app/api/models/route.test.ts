@@ -4,13 +4,15 @@ import { setDatabaseForTests } from "@/lib/db/client.server";
 import { user } from "@/lib/db/schema";
 import { createTestDatabase } from "@/lib/db/test-db.server";
 import { listModelVersions } from "@/lib/models/models.server";
-import { saveRevision } from "@/lib/models/revisions.server";
+import { readRevisionThumbnailState, saveRevision } from "@/lib/models/revisions.server";
+import { THUMBNAIL_VERSION } from "@/lib/models/thumbnails.server";
 import { POST } from "./route";
 import { GET } from "./[id]/route";
 
 // Revisions live in Postgres (PGlite here); anonymous POST publishing is
 // retired (D6), bearer-token publishing is the programmatic path (P5.2).
 let testDb: Awaited<ReturnType<typeof createTestDatabase>>;
+const PNG_PIXEL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 
 beforeAll(async () => {
   testDb = await createTestDatabase();
@@ -48,11 +50,12 @@ describe("hosted model API", () => {
     await testDb.db.insert(user).values({ id: "token-user", name: "Token User", email: "t@example.com", username: "token-user" });
     const { token } = await createApiToken("token-user", testDb.db);
 
-    const created = await tokenPublish({ name: "CLI widget", source: "cube([4, 4, 4]);", tags: ["cli"] }, token);
+    const created = await tokenPublish({ name: "CLI widget", source: "cube([4, 4, 4]);", tags: ["cli"], thumbnail: PNG_PIXEL }, token);
     expect(created.status).toBe(201);
     const createdPayload = await created.json();
     expect(createdPayload.url).toBe("/u/token-user/cli-widget");
     expect(createdPayload.model.ownerId).toBe("token-user");
+    expect(await readRevisionThumbnailState(createdPayload.revision.id, testDb.db)).toEqual({ present: true, version: THUMBNAIL_VERSION });
 
     const updated = await tokenPublish({ name: "CLI widget", source: "cube([5, 5, 5]);", modelId: createdPayload.model.id }, token);
     expect(updated.status).toBe(201);

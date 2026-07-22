@@ -4,6 +4,8 @@ import { setSessionUserForTests, type SessionUser } from "@/lib/auth/session.ser
 import { setDatabaseForTests } from "@/lib/db/client.server";
 import { modelRevisions, models, revisions, user } from "@/lib/db/schema";
 import { createTestDatabase } from "@/lib/db/test-db.server";
+import { readRevisionThumbnailState } from "@/lib/models/revisions.server";
+import { THUMBNAIL_VERSION } from "@/lib/models/thumbnails.server";
 import { GET as GET_THUMBNAIL } from "../../models/[id]/thumbnail/route";
 import { POST } from "./route";
 
@@ -83,6 +85,11 @@ describe("POST /api/app/models", () => {
     }));
     expect(response.status).toBe(201);
     const { revision } = await response.json();
+
+    expect(await readRevisionThumbnailState(revision.id, testDb.db)).toEqual({
+      present: true,
+      version: THUMBNAIL_VERSION,
+    });
 
     const served = await GET_THUMBNAIL(new Request(`http://localhost/api/models/${revision.id}/thumbnail`), { params: Promise.resolve({ id: revision.id }) });
     expect(served.status).toBe(200);
