@@ -325,6 +325,8 @@ input[type="range"]::-webkit-slider-thumb { margin-top: -5px; width: 13px; heigh
 /* Social chrome bar (model pages). Narrow screens scroll the bar
    horizontally instead of clipping the right-edge actions. */
 .social-bar { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 7px 17px; background: #141713; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: thin; }
+.social-menu-portal { position: fixed; z-index: 100; overflow-y: auto; scrollbar-width: thin; }
+.social-menu-portal > .example-menu { position: static; width: 100%; }
 a.social-tag { text-decoration: none; }
 a.social-tag:hover { color: var(--accent); background: var(--accent-dark); }
 .social-count.drawer-open { color: var(--accent); background: var(--accent-dark); }

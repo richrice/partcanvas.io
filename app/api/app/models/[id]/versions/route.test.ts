@@ -3,7 +3,7 @@ import { setSessionUserForTests, type SessionUser } from "@/lib/auth/session.ser
 import { setDatabaseForTests } from "@/lib/db/client.server";
 import { user } from "@/lib/db/schema";
 import { createTestDatabase } from "@/lib/db/test-db.server";
-import { createModel, listModelVersions, readModel } from "@/lib/models/models.server";
+import { createModel, listModelVersions, readModel, updateModelMetadata } from "@/lib/models/models.server";
 import { saveRevision } from "@/lib/models/revisions.server";
 import { POST } from "./route";
 
@@ -51,7 +51,7 @@ describe("POST /api/app/models/:id/versions", () => {
 
   it("publishes a new version and moves the head", async () => {
     setSessionUserForTests(owner);
-    const response = await updateRequest(modelId, { name: "Versioned box", source: "cube([6, 6, 6]);" });
+    const response = await updateRequest(modelId, { name: "Renamed versioned box", source: "cube([6, 6, 6]);" });
     expect(response.status).toBe(201);
     const payload = await response.json();
     expect(payload.version).toBe(2);
@@ -59,6 +59,7 @@ describe("POST /api/app/models/:id/versions", () => {
 
     const model = await readModel(modelId, testDb.db);
     expect(model!.headRevisionId).toBe(payload.revision.id);
+    expect(model!.title).toBe("Renamed versioned box");
     const versions = await listModelVersions(modelId, testDb.db);
     expect(versions.map((entry) => entry.version)).toEqual([2, 1]);
     expect(versions[0].revisionId).toBe(payload.revision.id);
@@ -67,15 +68,25 @@ describe("POST /api/app/models/:id/versions", () => {
 
   it("refuses an update identical to the current head", async () => {
     setSessionUserForTests(owner);
-    const response = await updateRequest(modelId, { name: "Versioned box", source: "cube([6, 6, 6]);" });
+    const response = await updateRequest(modelId, { name: "Renamed versioned box", source: "cube([6, 6, 6]);" });
     expect(response.status).toBe(409);
     expect((await response.json()).error).toMatch(/already the current version/);
     expect((await listModelVersions(modelId, testDb.db))).toHaveLength(2);
   });
 
+  it("repairs a public title that drifted from the current revision name", async () => {
+    setSessionUserForTests(owner);
+    await updateModelMetadata(modelId, { title: "Stale public title" }, testDb.db);
+    const response = await updateRequest(modelId, { name: "Renamed versioned box", source: "cube([6, 6, 6]);" });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ renamed: true, version: 2 });
+    expect((await readModel(modelId, testDb.db))!.title).toBe("Renamed versioned box");
+    expect((await listModelVersions(modelId, testDb.db))).toHaveLength(2);
+  });
+
   it("rejects invalid updates without touching history", async () => {
     setSessionUserForTests(owner);
-    expect((await updateRequest(modelId, { name: "Versioned box", source: "nope =" })).status).toBe(422);
+    expect((await updateRequest(modelId, { name: "Renamed versioned box", source: "nope =" })).status).toBe(422);
     expect((await listModelVersions(modelId, testDb.db))).toHaveLength(2);
   });
 });

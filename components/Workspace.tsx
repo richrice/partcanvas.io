@@ -33,6 +33,7 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AuthMenu } from "./AuthMenu";
 import { CodeEditor, type CursorLocation } from "./CodeEditor";
 import { ModelViewport, type ViewPreset } from "./ModelViewport";
@@ -64,6 +65,56 @@ import {
 } from "@/lib/fdm";
 
 const format = (value: number) => value >= 100 ? value.toFixed(0) : value >= 10 ? value.toFixed(1) : value.toFixed(2);
+
+function documentSnapshot(
+  modelName: string,
+  source: string,
+  projectFiles: Record<string, string>,
+  parameters: Record<string, ParameterValue>,
+) {
+  return {
+    modelName,
+    source,
+    projectFiles: JSON.stringify(projectFiles),
+    parameters: JSON.stringify(parameters),
+  };
+}
+
+function SocialMenuPortal({ anchorRef, children }: {
+  anchorRef: React.RefObject<HTMLElement | null>;
+  children: React.ReactNode;
+}) {
+  const [position, setPosition] = useState<{ top: number; left: number; width: number; maxHeight: number } | null>(null);
+  useEffect(() => {
+    const updatePosition = () => {
+      const anchor = anchorRef.current;
+      if (!anchor) return;
+      const rect = anchor.getBoundingClientRect();
+      const toolbarBottom = anchor.closest(".social-bar")?.getBoundingClientRect().bottom ?? rect.bottom;
+      const top = Math.max(rect.bottom, toolbarBottom) + 5;
+      const gutter = 8;
+      const width = Math.min(240, window.innerWidth - gutter * 2);
+      setPosition({
+        top,
+        left: Math.max(gutter, Math.min(rect.right - width, window.innerWidth - width - gutter)),
+        width,
+        maxHeight: Math.max(120, window.innerHeight - top - gutter),
+      });
+    };
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [anchorRef]);
+  if (!position) return null;
+  return createPortal(
+    <div className="social-menu-portal" style={position}>{children}</div>,
+    document.body,
+  );
+}
 
 export interface InitialWorkspaceModel {
   name: string;
@@ -130,11 +181,15 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
     }
   }, [source, projectFiles]);
   const [parameters, setParameters] = useState<Record<string, ParameterValue>>(() => ({ ...defaultParameterValues(definitions), ...(initialModel?.parameters ?? {}) }));
-  const initialDocument = useRef({
-    source,
-    projectFiles: JSON.stringify(projectFiles),
-    parameters: JSON.stringify(parameters),
-  });
+  const initialDocument = useRef(documentSnapshot(modelName, source, projectFiles, parameters));
+  const [publishedDocument, setPublishedDocument] = useState(() => documentSnapshot(modelName, source, projectFiles, parameters));
+  const currentDocument = documentSnapshot(modelName, source, projectFiles, parameters);
+  const hasUnpublishedChanges = Boolean(initialModel?.hostedId) && (
+    currentDocument.modelName !== publishedDocument.modelName
+    || currentDocument.source !== publishedDocument.source
+    || currentDocument.projectFiles !== publishedDocument.projectFiles
+    || currentDocument.parameters !== publishedDocument.parameters
+  );
   const [selectedPreset, setSelectedPreset] = useState("");
   const [result, setResult] = useState<CompileResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -237,6 +292,31 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
     if (!printSettingsLoaded) return;
     window.localStorage.setItem("partcanvas.print-settings", JSON.stringify(printSettings));
   }, [printSettings, printSettingsLoaded]);
+
+  useEffect(() => {
+    if (!hasUnpublishedChanges) return;
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = true;
+    };
+    const warnBeforeLinkNavigation = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      if (!(event.target instanceof Element)) return;
+      const link = event.target.closest("a[href]");
+      if (!link || link.getAttribute("target") === "_blank" || link.hasAttribute("download")) return;
+      const href = link.getAttribute("href");
+      if (!href || href.startsWith("#")) return;
+      if (window.confirm("You have unpublished model changes. Leave without publishing this version?")) return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    document.addEventListener("click", warnBeforeLinkNavigation, true);
+    return () => {
+      window.removeEventListener("beforeunload", warnBeforeUnload);
+      document.removeEventListener("click", warnBeforeLinkNavigation, true);
+    };
+  }, [hasUnpublishedChanges]);
 
   // Compiles resolve asynchronously (the cache's persistent tier is async),
   // so a run counter drops stale completions when the source or parameters
@@ -424,10 +504,11 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
           headers: { "content-type": "application/json" },
           body: JSON.stringify(draft),
         });
-        const payload = await response.json() as { version?: number; error?: string };
-        if (!response.ok || !payload.version) throw new Error(payload.error || "Could not publish the update");
+        const payload = await response.json() as { version?: number; renamed?: boolean; error?: string };
+        if (!response.ok || (!payload.version && !payload.renamed)) throw new Error(payload.error || "Could not publish the update");
+        setPublishedDocument(currentDocument);
         setShowPublishDialog(false);
-        showNotice(`Version ${payload.version} published`, "success", 2600);
+        showNotice(payload.renamed ? "Model name updated" : `Version ${payload.version} published`, "success", 2600);
         router.refresh();
         return;
       }
@@ -459,6 +540,9 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
   const [showReport, setShowReport] = useState(false);
   const [reportReason, setReportReason] = useState("");
   const [reporting, setReporting] = useState(false);
+  const versionsButtonRef = useRef<HTMLButtonElement>(null);
+  const forksButtonRef = useRef<HTMLButtonElement>(null);
+  const reportButtonRef = useRef<HTMLButtonElement>(null);
   const [publishMode, setPublishMode] = useState<"update" | "new">(social?.viewerIsOwner ? "update" : "new");
   const forkCurrentModel = async () => {
     if (!social || forking) return;
@@ -629,7 +713,7 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
   useEffect(() => {
     if (!anyMenuOpen) return;
     const close = (event: MouseEvent) => {
-      if ((event.target as Element | null)?.closest?.(".example-picker")) return;
+      if ((event.target as Element | null)?.closest?.(".example-picker, .social-menu-portal")) return;
       setShowExamples(false);
       setShowVersions(false);
       setShowForks(false);
@@ -685,8 +769,10 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
       });
       const payload = await response.json().catch(() => ({})) as { error?: string };
       if (!response.ok) throw new Error(payload.error || "Could not save the changes");
+      const savedTitle = editTitle.trim() || modelName;
       setShowEditDialog(false);
-      setModelName(editTitle.trim() || modelName);
+      setModelName(savedTitle);
+      setPublishedDocument((current) => ({ ...current, modelName: savedTitle }));
       showNotice("Model details saved");
       router.refresh();
     } catch (error) {
@@ -788,11 +874,15 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
           <button
             className="ghost-button publish-button"
             onClick={publishModel}
-            disabled={!result?.geometry || result.dimension !== 3 || compiling || publishing}
+            disabled={!result?.geometry || result.dimension !== 3 || compiling || publishing || Boolean(social?.viewerIsOwner && !hasUnpublishedChanges)}
             title={result?.dimension === 2
               ? "2D sketches can be shared and exported, but only 3D models can be published"
-              : result?.geometry ? "Publish to the community gallery" : "Fix the script so it produces geometry, then publish"}
-          ><CloudUpload size={15} /> {publishing ? "Publishing…" : "Publish"}</button>
+              : social?.viewerIsOwner && !hasUnpublishedChanges
+                ? "This is the published version shown in the community gallery"
+                : social?.viewerIsOwner
+                  ? "Publish these changes and update the community gallery preview"
+                  : result?.geometry ? "Publish to the community gallery" : "Fix the script so it produces geometry, then publish"}
+          ><CloudUpload size={15} /> {publishing ? "Publishing…" : social?.viewerIsOwner ? hasUnpublishedChanges ? "Publish update" : "Published" : "Publish"}</button>
           <button className="primary-button" onClick={downloadModel} disabled={!result?.geometry || compiling}>
             <Download size={16} /> Export {effectiveExportFormat.toUpperCase()}
           </button>
@@ -835,33 +925,37 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
             </button>
             {social.versions.length > 0 && (
               <div className="example-picker">
-                <button className="ghost-button social-count" onClick={() => setShowVersions((value) => !value)} title="Version history">
+                <button ref={versionsButtonRef} className="ghost-button social-count" onClick={() => setShowVersions((value) => !value)} title="Version history">
                   <History size={14} /> v{social.versions[0].version} <ChevronDown size={13} />
                 </button>
                 {showVersions && (
-                  <div className="example-menu auth-dropdown">
-                    <span className="menu-label">VERSION HISTORY</span>
-                    {social.versions.map((entry) => (
-                      <a className="auth-menu-link" key={entry.version} href={`/m/${entry.revisionId}`}>
-                        <History size={15} /> v{entry.version} <small>{new Date(entry.publishedAt).toLocaleDateString()}</small>
-                      </a>
-                    ))}
-                  </div>
+                  <SocialMenuPortal anchorRef={versionsButtonRef}>
+                    <div className="example-menu auth-dropdown">
+                      <span className="menu-label">VERSION HISTORY</span>
+                      {social.versions.map((entry) => (
+                        <a className="auth-menu-link" key={entry.version} href={`/m/${entry.revisionId}`}>
+                          <History size={15} /> v{entry.version} <small>{new Date(entry.publishedAt).toLocaleDateString()}</small>
+                        </a>
+                      ))}
+                    </div>
+                  </SocialMenuPortal>
                 )}
               </div>
             )}
             {social.forkCount > 0 && (
               <div className="example-picker">
-                <button className="ghost-button social-count" onClick={() => setShowForks((value) => !value)} title="Public forks of this model">
+                <button ref={forksButtonRef} className="ghost-button social-count" onClick={() => setShowForks((value) => !value)} title="Public forks of this model">
                   {social.forkCount} fork{social.forkCount === 1 ? "" : "s"} <ChevronDown size={13} />
                 </button>
                 {showForks && (
-                  <div className="example-menu auth-dropdown">
-                    <span className="menu-label">PUBLIC FORKS</span>
-                    {social.forks.map((fork) => (
-                      <a className="auth-menu-link" key={fork.url} href={fork.url}><GitFork size={15} /> {fork.title} <small>by {fork.author}</small></a>
-                    ))}
-                  </div>
+                  <SocialMenuPortal anchorRef={forksButtonRef}>
+                    <div className="example-menu auth-dropdown">
+                      <span className="menu-label">PUBLIC FORKS</span>
+                      {social.forks.map((fork) => (
+                        <a className="auth-menu-link" key={fork.url} href={fork.url}><GitFork size={15} /> {fork.title} <small>by {fork.author}</small></a>
+                      ))}
+                    </div>
+                  </SocialMenuPortal>
                 )}
               </div>
             )}
@@ -873,24 +967,26 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
               </button>
             )}
             <div className="example-picker">
-              <button className="ghost-button social-count" onClick={() => setShowReport((value) => !value)} title="Report this model">
+              <button ref={reportButtonRef} className="ghost-button social-count" onClick={() => setShowReport((value) => !value)} title="Report this model">
                 <Flag size={14} />
               </button>
               {showReport && (
-                <form className="example-menu auth-dropdown report-menu" onSubmit={submitReport}>
-                  <span className="menu-label">REPORT THIS MODEL</span>
-                  <textarea
-                    aria-label="Report reason"
-                    rows={3}
-                    maxLength={1000}
-                    placeholder="What's wrong? (optional)"
-                    value={reportReason}
-                    onChange={(event) => setReportReason(event.target.value)}
-                  />
-                  <button className="primary-button" type="submit" disabled={reporting}>
-                    {reporting ? <LoaderCircle className="spinner" size={14} /> : <Flag size={14} />} Send report
-                  </button>
-                </form>
+                <SocialMenuPortal anchorRef={reportButtonRef}>
+                  <form className="example-menu auth-dropdown report-menu" onSubmit={submitReport}>
+                    <span className="menu-label">REPORT THIS MODEL</span>
+                    <textarea
+                      aria-label="Report reason"
+                      rows={3}
+                      maxLength={1000}
+                      placeholder="What's wrong? (optional)"
+                      value={reportReason}
+                      onChange={(event) => setReportReason(event.target.value)}
+                    />
+                    <button className="primary-button" type="submit" disabled={reporting}>
+                      {reporting ? <LoaderCircle className="spinner" size={14} /> : <Flag size={14} />} Send report
+                    </button>
+                  </form>
+                </SocialMenuPortal>
               )}
             </div>
           </div>
@@ -971,7 +1067,7 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
       <section className="workspace">
         <div className={`workspace-panel editor-panel ${mobilePanel === "code" ? "mobile-active" : ""}`}>
           <div className="panel-toolbar">
-            <div className="file-tab" title={modelName}><span className="language-icon">S</span><select aria-label="Active project file" value={activeFile} onChange={(event) => setActiveFile(event.target.value)}><option value="main.scad">main.scad</option>{editableFiles.map((name) => <option value={name} key={name}>{name}</option>)}</select>{assetFiles.length ? <span className="asset-count" title={`Imported assets: ${assetFiles.join(", ")}`}>{assetFiles.length} asset{assetFiles.length === 1 ? "" : "s"}</span> : null}{initialModel?.hostedId ? <span className="hosted-dot" title="Hosted model" /> : <span className="unsaved-dot" />}</div>
+            <div className="file-tab" title={modelName}><span className="language-icon">S</span><select aria-label="Active project file" value={activeFile} onChange={(event) => setActiveFile(event.target.value)}><option value="main.scad">main.scad</option>{editableFiles.map((name) => <option value={name} key={name}>{name}</option>)}</select>{assetFiles.length ? <span className="asset-count" title={`Imported assets: ${assetFiles.join(", ")}`}>{assetFiles.length} asset{assetFiles.length === 1 ? "" : "s"}</span> : null}{initialModel?.hostedId ? hasUnpublishedChanges ? <span className="unsaved-dot" title="Unpublished changes" /> : <span className="hosted-dot" title="Published version" /> : <span className="unsaved-dot" title="Unpublished model" />}</div>
             <div className="toolbar-actions">
               <input
                 ref={uploadRef}
@@ -1134,7 +1230,7 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
               <div className="publish-mode" role="radiogroup" aria-label="Publish mode">
                 <label>
                   <input type="radio" name="publish-mode" checked={publishMode === "update"} onChange={() => setPublishMode("update")} />
-                  Update “{social.title}” (v{(social.versions[0]?.version ?? 1) + 1})
+                  Update “{social.title}”
                 </label>
                 <label>
                   <input type="radio" name="publish-mode" checked={publishMode === "new"} onChange={() => setPublishMode("new")} />
@@ -1142,9 +1238,11 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
                 </label>
               </div>
             )}
-            {/* Update mode republishes content only — the model title is edited
-                via the Edit-details dialog, so offering it here would be a
-                silent no-op. */}
+            {social?.viewerIsOwner && publishMode === "update" && (
+              <p>Publishing saves the model name and, when the content changed, creates a new version with a refreshed gallery preview.</p>
+            )}
+            {/* The top-bar model name is part of an update, so the new-model
+                metadata fields stay hidden in update mode. */}
             {(!social?.viewerIsOwner || publishMode === "new") && (<>
             <label className="publish-field">
               <span>Title</span>

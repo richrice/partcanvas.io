@@ -584,6 +584,48 @@ describe("CAD compiler", () => {
     expect(projectSettings.printer_settings_id).toBe("Default Printer");
   });
 
+  it("serializes recessed text and boolean holes as indexed, watertight 3MF meshes", () => {
+    const result = compileScad(`
+      $fn = 40;
+      module plate() {
+        hull()
+          for (x = [4, 68])
+            for (y = [4, 22])
+              translate([x, y, 0]) cylinder(h = 3, r = 4);
+      }
+      module label() {
+        translate([15, 13, 1.8])
+          linear_extrude(height = 1.2)
+            text("MODEL Y", size = 7, valign = "center");
+      }
+      color("navy") difference() {
+        plate();
+        translate([8, 13, -1]) cylinder(h = 5, r = 3);
+        translate([0, 0, -0.01]) label();
+      }
+      color("gold") label();
+    `);
+    const archive = unzipSync(serializeGeometry(result.parts, "3mf", "Embedded name tag").data);
+    const model = new TextDecoder().decode(archive["3D/3dmodel.model"]);
+    const baseObject = model.match(/<object id="1"[^>]*>([\s\S]*?)<\/object>/)?.[1];
+    expect(baseObject).toBeDefined();
+
+    const vertexCount = [...baseObject!.matchAll(/<vertex\b/g)].length;
+    const edgeCounts = new Map<string, number>();
+    for (const match of baseObject!.matchAll(/<triangle v1="(\d+)" v2="(\d+)" v3="(\d+)"\/>/g)) {
+      const triangle = match.slice(1).map(Number);
+      expect(new Set(triangle).size).toBe(3);
+      for (let index = 0; index < 3; index += 1) {
+        const endpoints = [triangle[index], triangle[(index + 1) % 3]].sort((a, b) => a - b);
+        expect(endpoints[1]).toBeLessThan(vertexCount);
+        const key = endpoints.join(",");
+        edgeCounts.set(key, (edgeCounts.get(key) ?? 0) + 1);
+      }
+    }
+    expect(edgeCounts.size).toBeGreaterThan(0);
+    expect([...edgeCounts.values()].every((count) => count === 2)).toBe(true);
+  });
+
   it("compiles and serializes first-class 2D geometry", () => {
     const source = `difference() { square([30, 20]); translate([15, 10]) circle(r = 4, $fn = 32); }`;
     const result = compileScad(source, { outputDimension: "2d" });
