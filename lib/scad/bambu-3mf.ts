@@ -1,9 +1,13 @@
-import { geometries } from "@jscad/modeling";
+import { geometries, measurements, modifiers, transforms } from "@jscad/modeling";
 import type { Geom3 } from "@jscad/modeling/src/geometries/types";
 import { strToU8, zipSync } from "fflate";
 
 const DEFAULT_COLOR: [number, number, number, number] = [0.46, 0.84, 0.76, 1];
 const MAX_FILAMENTS = 32;
+const generalize = modifiers.generalize as unknown as (
+  options: { snap: boolean; triangulate: boolean },
+  geometry: Geom3,
+) => Geom3;
 
 function xml(value: string) {
   return value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
@@ -15,16 +19,34 @@ function colorHex(geometry: Geom3) {
 }
 
 function meshXml(geometry: Geom3) {
+  const bounds = measurements.measureBoundingBox(geometry);
+  const extent = Math.max(...bounds[0].map((minimum, axis) => bounds[1][axis] - minimum));
+  const scale = extent > 0 ? 1 / extent : 1;
+  // JSCAD detects T-junctions with a fixed absolute tolerance. Normalize first
+  // so that boolean seams are repaired consistently regardless of model size.
+  const normalized = transforms.scale([scale, scale, scale], geometry);
+  const printable = transforms.scale(
+    [1 / scale, 1 / scale, 1 / scale],
+    generalize({ snap: true, triangulate: true }, normalized),
+  );
   const vertices: string[] = [];
   const triangles: string[] = [];
-  let offset = 0;
-  for (const polygon of geometries.geom3.toPolygons(geometry)) {
+  const vertexIndexes = new Map<string, number>();
+  const vertexIndex = ([x, y, z]: [number, number, number]) => {
+    const key = `${x},${y},${z}`;
+    const existing = vertexIndexes.get(key);
+    if (existing !== undefined) return existing;
+    const index = vertices.length;
+    vertexIndexes.set(key, index);
+    vertices.push(`<vertex x="${x}" y="${y}" z="${z}"/>`);
+    return index;
+  };
+  for (const polygon of geometries.geom3.toPolygons(printable)) {
     if (polygon.vertices.length < 3) continue;
-    for (const [x, y, z] of polygon.vertices) vertices.push(`<vertex x="${x}" y="${y}" z="${z}"/>`);
-    for (let index = 1; index < polygon.vertices.length - 1; index += 1) {
-      triangles.push(`<triangle v1="${offset}" v2="${offset + index}" v3="${offset + index + 1}"/>`);
+    const indexes = polygon.vertices.map(vertexIndex);
+    for (let index = 1; index < indexes.length - 1; index += 1) {
+      triangles.push(`<triangle v1="${indexes[0]}" v2="${indexes[index]}" v3="${indexes[index + 1]}"/>`);
     }
-    offset += polygon.vertices.length;
   }
   return `<mesh><vertices>${vertices.join("")}</vertices><triangles>${triangles.join("")}</triangles></mesh>`;
 }
