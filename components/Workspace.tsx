@@ -90,13 +90,15 @@ function SocialMenuPortal({ anchorRef, children }: {
       const anchor = anchorRef.current;
       if (!anchor) return;
       const rect = anchor.getBoundingClientRect();
+      const toolbarBottom = anchor.closest(".social-bar")?.getBoundingClientRect().bottom ?? rect.bottom;
+      const top = Math.max(rect.bottom, toolbarBottom) + 5;
       const gutter = 8;
       const width = Math.min(240, window.innerWidth - gutter * 2);
       setPosition({
-        top: rect.bottom + 5,
+        top,
         left: Math.max(gutter, Math.min(rect.right - width, window.innerWidth - width - gutter)),
         width,
-        maxHeight: Math.max(120, window.innerHeight - rect.bottom - gutter - 5),
+        maxHeight: Math.max(120, window.innerHeight - top - gutter),
       });
     };
     updatePosition();
