@@ -65,6 +65,20 @@ import {
 
 const format = (value: number) => value >= 100 ? value.toFixed(0) : value >= 10 ? value.toFixed(1) : value.toFixed(2);
 
+function documentSnapshot(
+  modelName: string,
+  source: string,
+  projectFiles: Record<string, string>,
+  parameters: Record<string, ParameterValue>,
+) {
+  return {
+    modelName,
+    source,
+    projectFiles: JSON.stringify(projectFiles),
+    parameters: JSON.stringify(parameters),
+  };
+}
+
 export interface InitialWorkspaceModel {
   name: string;
   source: string;
@@ -130,11 +144,15 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
     }
   }, [source, projectFiles]);
   const [parameters, setParameters] = useState<Record<string, ParameterValue>>(() => ({ ...defaultParameterValues(definitions), ...(initialModel?.parameters ?? {}) }));
-  const initialDocument = useRef({
-    source,
-    projectFiles: JSON.stringify(projectFiles),
-    parameters: JSON.stringify(parameters),
-  });
+  const initialDocument = useRef(documentSnapshot(modelName, source, projectFiles, parameters));
+  const [publishedDocument, setPublishedDocument] = useState(() => documentSnapshot(modelName, source, projectFiles, parameters));
+  const currentDocument = documentSnapshot(modelName, source, projectFiles, parameters);
+  const hasUnpublishedChanges = Boolean(initialModel?.hostedId) && (
+    currentDocument.modelName !== publishedDocument.modelName
+    || currentDocument.source !== publishedDocument.source
+    || currentDocument.projectFiles !== publishedDocument.projectFiles
+    || currentDocument.parameters !== publishedDocument.parameters
+  );
   const [selectedPreset, setSelectedPreset] = useState("");
   const [result, setResult] = useState<CompileResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -237,6 +255,31 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
     if (!printSettingsLoaded) return;
     window.localStorage.setItem("partcanvas.print-settings", JSON.stringify(printSettings));
   }, [printSettings, printSettingsLoaded]);
+
+  useEffect(() => {
+    if (!hasUnpublishedChanges) return;
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = true;
+    };
+    const warnBeforeLinkNavigation = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      if (!(event.target instanceof Element)) return;
+      const link = event.target.closest("a[href]");
+      if (!link || link.getAttribute("target") === "_blank" || link.hasAttribute("download")) return;
+      const href = link.getAttribute("href");
+      if (!href || href.startsWith("#")) return;
+      if (window.confirm("You have unpublished model changes. Leave without publishing this version?")) return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    document.addEventListener("click", warnBeforeLinkNavigation, true);
+    return () => {
+      window.removeEventListener("beforeunload", warnBeforeUnload);
+      document.removeEventListener("click", warnBeforeLinkNavigation, true);
+    };
+  }, [hasUnpublishedChanges]);
 
   // Compiles resolve asynchronously (the cache's persistent tier is async),
   // so a run counter drops stale completions when the source or parameters
@@ -426,6 +469,7 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
         });
         const payload = await response.json() as { version?: number; error?: string };
         if (!response.ok || !payload.version) throw new Error(payload.error || "Could not publish the update");
+        setPublishedDocument(currentDocument);
         setShowPublishDialog(false);
         showNotice(`Version ${payload.version} published`, "success", 2600);
         router.refresh();
@@ -788,11 +832,15 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
           <button
             className="ghost-button publish-button"
             onClick={publishModel}
-            disabled={!result?.geometry || result.dimension !== 3 || compiling || publishing}
+            disabled={!result?.geometry || result.dimension !== 3 || compiling || publishing || Boolean(social?.viewerIsOwner && !hasUnpublishedChanges)}
             title={result?.dimension === 2
               ? "2D sketches can be shared and exported, but only 3D models can be published"
-              : result?.geometry ? "Publish to the community gallery" : "Fix the script so it produces geometry, then publish"}
-          ><CloudUpload size={15} /> {publishing ? "Publishing…" : "Publish"}</button>
+              : social?.viewerIsOwner && !hasUnpublishedChanges
+                ? "This is the published version shown in the community gallery"
+                : social?.viewerIsOwner
+                  ? "Publish these changes and update the community gallery preview"
+                  : result?.geometry ? "Publish to the community gallery" : "Fix the script so it produces geometry, then publish"}
+          ><CloudUpload size={15} /> {publishing ? "Publishing…" : social?.viewerIsOwner ? hasUnpublishedChanges ? "Publish update" : "Published" : "Publish"}</button>
           <button className="primary-button" onClick={downloadModel} disabled={!result?.geometry || compiling}>
             <Download size={16} /> Export {effectiveExportFormat.toUpperCase()}
           </button>
@@ -971,7 +1019,7 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
       <section className="workspace">
         <div className={`workspace-panel editor-panel ${mobilePanel === "code" ? "mobile-active" : ""}`}>
           <div className="panel-toolbar">
-            <div className="file-tab" title={modelName}><span className="language-icon">S</span><select aria-label="Active project file" value={activeFile} onChange={(event) => setActiveFile(event.target.value)}><option value="main.scad">main.scad</option>{editableFiles.map((name) => <option value={name} key={name}>{name}</option>)}</select>{assetFiles.length ? <span className="asset-count" title={`Imported assets: ${assetFiles.join(", ")}`}>{assetFiles.length} asset{assetFiles.length === 1 ? "" : "s"}</span> : null}{initialModel?.hostedId ? <span className="hosted-dot" title="Hosted model" /> : <span className="unsaved-dot" />}</div>
+            <div className="file-tab" title={modelName}><span className="language-icon">S</span><select aria-label="Active project file" value={activeFile} onChange={(event) => setActiveFile(event.target.value)}><option value="main.scad">main.scad</option>{editableFiles.map((name) => <option value={name} key={name}>{name}</option>)}</select>{assetFiles.length ? <span className="asset-count" title={`Imported assets: ${assetFiles.join(", ")}`}>{assetFiles.length} asset{assetFiles.length === 1 ? "" : "s"}</span> : null}{initialModel?.hostedId ? hasUnpublishedChanges ? <span className="unsaved-dot" title="Unpublished changes" /> : <span className="hosted-dot" title="Published version" /> : <span className="unsaved-dot" title="Unpublished model" />}</div>
             <div className="toolbar-actions">
               <input
                 ref={uploadRef}
@@ -1141,6 +1189,9 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
                   Publish as a new model
                 </label>
               </div>
+            )}
+            {social?.viewerIsOwner && publishMode === "update" && (
+              <p>Publishing creates a new version and refreshes this model&apos;s gallery preview from the current render.</p>
             )}
             {/* Update mode republishes content only — the model title is edited
                 via the Edit-details dialog, so offering it here would be a
