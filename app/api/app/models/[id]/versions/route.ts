@@ -1,7 +1,7 @@
 import { checkRateLimit, PUBLISH_RULE, rateLimitResponse } from "@/lib/api/rate-limit.server";
 import { getSessionUser } from "@/lib/auth/session.server";
 import { getDb } from "@/lib/db/client.server";
-import { publishModelVersion, readModel, updateModelMetadata } from "@/lib/models/models.server";
+import { publishModelVersion, readCurrentModelVersion, readModel, updateModelMetadata } from "@/lib/models/models.server";
 import { saveRevision, setRevisionThumbnail } from "@/lib/models/revisions.server";
 import { decodeThumbnailDataUrl, THUMBNAIL_VERSION } from "@/lib/models/thumbnails.server";
 import type { HostedModelDraft } from "@/lib/models/types";
@@ -39,7 +39,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       if (record.name !== model.title) {
         const renamed = await updateModelMetadata(model.id, { title: record.name }, db);
         if (!renamed) throw new Error("Model not found");
-        return Response.json({ renamed: true, revision: { id: record.id } }, {
+        const version = await readCurrentModelVersion(model.id, db);
+        if (version === null) throw new Error("Model version history is missing");
+        return Response.json({ renamed: true, version, revision: { id: record.id } }, {
           status: 200,
           headers: { "cache-control": "no-store" },
         });

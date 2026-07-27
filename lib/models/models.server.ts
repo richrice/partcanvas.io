@@ -191,6 +191,13 @@ export async function listModelVersions(modelId: string, db: Database = getDb())
     .orderBy(desc(modelRevisions.version));
 }
 
+export async function readCurrentModelVersion(modelId: string, db: Database = getDb()): Promise<number | null> {
+  const [row] = await db.select({ version: sql<number | null>`max(${modelRevisions.version})` })
+    .from(modelRevisions)
+    .where(eq(modelRevisions.modelId, modelId));
+  return row.version === null ? null : Number(row.version);
+}
+
 export interface ForkLink {
   title: string;
   slug: string;

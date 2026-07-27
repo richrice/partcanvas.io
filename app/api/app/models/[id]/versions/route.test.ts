@@ -79,7 +79,7 @@ describe("POST /api/app/models/:id/versions", () => {
     await updateModelMetadata(modelId, { title: "Stale public title" }, testDb.db);
     const response = await updateRequest(modelId, { name: "Renamed versioned box", source: "cube([6, 6, 6]);" });
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ renamed: true });
+    expect(await response.json()).toMatchObject({ renamed: true, version: 2 });
     expect((await readModel(modelId, testDb.db))!.title).toBe("Renamed versioned box");
     expect((await listModelVersions(modelId, testDb.db))).toHaveLength(2);
   });
