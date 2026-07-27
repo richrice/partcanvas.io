@@ -33,6 +33,7 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AuthMenu } from "./AuthMenu";
 import { CodeEditor, type CursorLocation } from "./CodeEditor";
 import { ModelViewport, type ViewPreset } from "./ModelViewport";
@@ -77,6 +78,40 @@ function documentSnapshot(
     projectFiles: JSON.stringify(projectFiles),
     parameters: JSON.stringify(parameters),
   };
+}
+
+function SocialMenuPortal({ anchorRef, children }: {
+  anchorRef: React.RefObject<HTMLElement | null>;
+  children: React.ReactNode;
+}) {
+  const [position, setPosition] = useState<{ top: number; left: number; width: number; maxHeight: number } | null>(null);
+  useEffect(() => {
+    const updatePosition = () => {
+      const anchor = anchorRef.current;
+      if (!anchor) return;
+      const rect = anchor.getBoundingClientRect();
+      const gutter = 8;
+      const width = Math.min(240, window.innerWidth - gutter * 2);
+      setPosition({
+        top: rect.bottom + 5,
+        left: Math.max(gutter, Math.min(rect.right - width, window.innerWidth - width - gutter)),
+        width,
+        maxHeight: Math.max(120, window.innerHeight - rect.bottom - gutter - 5),
+      });
+    };
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [anchorRef]);
+  if (!position) return null;
+  return createPortal(
+    <div className="social-menu-portal" style={position}>{children}</div>,
+    document.body,
+  );
 }
 
 export interface InitialWorkspaceModel {
@@ -467,11 +502,11 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
           headers: { "content-type": "application/json" },
           body: JSON.stringify(draft),
         });
-        const payload = await response.json() as { version?: number; error?: string };
-        if (!response.ok || !payload.version) throw new Error(payload.error || "Could not publish the update");
+        const payload = await response.json() as { version?: number; renamed?: boolean; error?: string };
+        if (!response.ok || (!payload.version && !payload.renamed)) throw new Error(payload.error || "Could not publish the update");
         setPublishedDocument(currentDocument);
         setShowPublishDialog(false);
-        showNotice(`Version ${payload.version} published`, "success", 2600);
+        showNotice(payload.renamed ? "Model name updated" : `Version ${payload.version} published`, "success", 2600);
         router.refresh();
         return;
       }
@@ -503,6 +538,9 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
   const [showReport, setShowReport] = useState(false);
   const [reportReason, setReportReason] = useState("");
   const [reporting, setReporting] = useState(false);
+  const versionsButtonRef = useRef<HTMLButtonElement>(null);
+  const forksButtonRef = useRef<HTMLButtonElement>(null);
+  const reportButtonRef = useRef<HTMLButtonElement>(null);
   const [publishMode, setPublishMode] = useState<"update" | "new">(social?.viewerIsOwner ? "update" : "new");
   const forkCurrentModel = async () => {
     if (!social || forking) return;
@@ -673,7 +711,7 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
   useEffect(() => {
     if (!anyMenuOpen) return;
     const close = (event: MouseEvent) => {
-      if ((event.target as Element | null)?.closest?.(".example-picker")) return;
+      if ((event.target as Element | null)?.closest?.(".example-picker, .social-menu-portal")) return;
       setShowExamples(false);
       setShowVersions(false);
       setShowForks(false);
@@ -729,8 +767,10 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
       });
       const payload = await response.json().catch(() => ({})) as { error?: string };
       if (!response.ok) throw new Error(payload.error || "Could not save the changes");
+      const savedTitle = editTitle.trim() || modelName;
       setShowEditDialog(false);
-      setModelName(editTitle.trim() || modelName);
+      setModelName(savedTitle);
+      setPublishedDocument((current) => ({ ...current, modelName: savedTitle }));
       showNotice("Model details saved");
       router.refresh();
     } catch (error) {
@@ -883,33 +923,37 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
             </button>
             {social.versions.length > 0 && (
               <div className="example-picker">
-                <button className="ghost-button social-count" onClick={() => setShowVersions((value) => !value)} title="Version history">
+                <button ref={versionsButtonRef} className="ghost-button social-count" onClick={() => setShowVersions((value) => !value)} title="Version history">
                   <History size={14} /> v{social.versions[0].version} <ChevronDown size={13} />
                 </button>
                 {showVersions && (
-                  <div className="example-menu auth-dropdown">
-                    <span className="menu-label">VERSION HISTORY</span>
-                    {social.versions.map((entry) => (
-                      <a className="auth-menu-link" key={entry.version} href={`/m/${entry.revisionId}`}>
-                        <History size={15} /> v{entry.version} <small>{new Date(entry.publishedAt).toLocaleDateString()}</small>
-                      </a>
-                    ))}
-                  </div>
+                  <SocialMenuPortal anchorRef={versionsButtonRef}>
+                    <div className="example-menu auth-dropdown">
+                      <span className="menu-label">VERSION HISTORY</span>
+                      {social.versions.map((entry) => (
+                        <a className="auth-menu-link" key={entry.version} href={`/m/${entry.revisionId}`}>
+                          <History size={15} /> v{entry.version} <small>{new Date(entry.publishedAt).toLocaleDateString()}</small>
+                        </a>
+                      ))}
+                    </div>
+                  </SocialMenuPortal>
                 )}
               </div>
             )}
             {social.forkCount > 0 && (
               <div className="example-picker">
-                <button className="ghost-button social-count" onClick={() => setShowForks((value) => !value)} title="Public forks of this model">
+                <button ref={forksButtonRef} className="ghost-button social-count" onClick={() => setShowForks((value) => !value)} title="Public forks of this model">
                   {social.forkCount} fork{social.forkCount === 1 ? "" : "s"} <ChevronDown size={13} />
                 </button>
                 {showForks && (
-                  <div className="example-menu auth-dropdown">
-                    <span className="menu-label">PUBLIC FORKS</span>
-                    {social.forks.map((fork) => (
-                      <a className="auth-menu-link" key={fork.url} href={fork.url}><GitFork size={15} /> {fork.title} <small>by {fork.author}</small></a>
-                    ))}
-                  </div>
+                  <SocialMenuPortal anchorRef={forksButtonRef}>
+                    <div className="example-menu auth-dropdown">
+                      <span className="menu-label">PUBLIC FORKS</span>
+                      {social.forks.map((fork) => (
+                        <a className="auth-menu-link" key={fork.url} href={fork.url}><GitFork size={15} /> {fork.title} <small>by {fork.author}</small></a>
+                      ))}
+                    </div>
+                  </SocialMenuPortal>
                 )}
               </div>
             )}
@@ -921,24 +965,26 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
               </button>
             )}
             <div className="example-picker">
-              <button className="ghost-button social-count" onClick={() => setShowReport((value) => !value)} title="Report this model">
+              <button ref={reportButtonRef} className="ghost-button social-count" onClick={() => setShowReport((value) => !value)} title="Report this model">
                 <Flag size={14} />
               </button>
               {showReport && (
-                <form className="example-menu auth-dropdown report-menu" onSubmit={submitReport}>
-                  <span className="menu-label">REPORT THIS MODEL</span>
-                  <textarea
-                    aria-label="Report reason"
-                    rows={3}
-                    maxLength={1000}
-                    placeholder="What's wrong? (optional)"
-                    value={reportReason}
-                    onChange={(event) => setReportReason(event.target.value)}
-                  />
-                  <button className="primary-button" type="submit" disabled={reporting}>
-                    {reporting ? <LoaderCircle className="spinner" size={14} /> : <Flag size={14} />} Send report
-                  </button>
-                </form>
+                <SocialMenuPortal anchorRef={reportButtonRef}>
+                  <form className="example-menu auth-dropdown report-menu" onSubmit={submitReport}>
+                    <span className="menu-label">REPORT THIS MODEL</span>
+                    <textarea
+                      aria-label="Report reason"
+                      rows={3}
+                      maxLength={1000}
+                      placeholder="What's wrong? (optional)"
+                      value={reportReason}
+                      onChange={(event) => setReportReason(event.target.value)}
+                    />
+                    <button className="primary-button" type="submit" disabled={reporting}>
+                      {reporting ? <LoaderCircle className="spinner" size={14} /> : <Flag size={14} />} Send report
+                    </button>
+                  </form>
+                </SocialMenuPortal>
               )}
             </div>
           </div>
@@ -1182,7 +1228,7 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
               <div className="publish-mode" role="radiogroup" aria-label="Publish mode">
                 <label>
                   <input type="radio" name="publish-mode" checked={publishMode === "update"} onChange={() => setPublishMode("update")} />
-                  Update “{social.title}” (v{(social.versions[0]?.version ?? 1) + 1})
+                  Update “{social.title}”
                 </label>
                 <label>
                   <input type="radio" name="publish-mode" checked={publishMode === "new"} onChange={() => setPublishMode("new")} />
@@ -1191,11 +1237,10 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
               </div>
             )}
             {social?.viewerIsOwner && publishMode === "update" && (
-              <p>Publishing creates a new version and refreshes this model&apos;s gallery preview from the current render.</p>
+              <p>Publishing saves the model name and, when the content changed, creates a new version with a refreshed gallery preview.</p>
             )}
-            {/* Update mode republishes content only — the model title is edited
-                via the Edit-details dialog, so offering it here would be a
-                silent no-op. */}
+            {/* The top-bar model name is part of an update, so the new-model
+                metadata fields stay hidden in update mode. */}
             {(!social?.viewerIsOwner || publishMode === "new") && (<>
             <label className="publish-field">
               <span>Title</span>

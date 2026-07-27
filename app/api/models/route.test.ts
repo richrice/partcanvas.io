@@ -3,7 +3,7 @@ import { createApiToken } from "@/lib/auth/tokens.server";
 import { setDatabaseForTests } from "@/lib/db/client.server";
 import { user } from "@/lib/db/schema";
 import { createTestDatabase } from "@/lib/db/test-db.server";
-import { listModelVersions } from "@/lib/models/models.server";
+import { listModelVersions, readModel } from "@/lib/models/models.server";
 import { readRevisionThumbnailState, saveRevision } from "@/lib/models/revisions.server";
 import { THUMBNAIL_VERSION } from "@/lib/models/thumbnails.server";
 import { POST } from "./route";
@@ -57,11 +57,12 @@ describe("hosted model API", () => {
     expect(createdPayload.model.ownerId).toBe("token-user");
     expect(await readRevisionThumbnailState(createdPayload.revision.id, testDb.db)).toEqual({ present: true, version: THUMBNAIL_VERSION });
 
-    const updated = await tokenPublish({ name: "CLI widget", source: "cube([5, 5, 5]);", modelId: createdPayload.model.id }, token);
+    const updated = await tokenPublish({ name: "Renamed CLI widget", source: "cube([5, 5, 5]);", modelId: createdPayload.model.id }, token);
     expect(updated.status).toBe(201);
     const updatedPayload = await updated.json();
     expect(updatedPayload.version).toBe(2);
     expect((await listModelVersions(createdPayload.model.id, testDb.db)).map((entry) => entry.version)).toEqual([2, 1]);
+    expect((await readModel(createdPayload.model.id, testDb.db))!.title).toBe("Renamed CLI widget");
 
     // Another account's token cannot push versions to it.
     await testDb.db.insert(user).values({ id: "intruder", name: "Intruder", email: "i@example.com", username: "intruder" });

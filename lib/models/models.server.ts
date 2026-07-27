@@ -40,6 +40,12 @@ export function slugify(title: string): string {
   return slug || "model";
 }
 
+function normalizeTitle(value: unknown): string {
+  const title = typeof value === "string" ? value.trim().slice(0, 80) : "";
+  if (!title) throw new Error("Model title is required");
+  return title;
+}
+
 function normalizeTags(tags: unknown): string[] {
   if (!Array.isArray(tags)) return [];
   return [...new Set(tags.filter((tag): tag is string => typeof tag === "string").map((tag) => tag.trim().toLowerCase()).filter(Boolean))].slice(0, 12);
@@ -49,8 +55,7 @@ function normalizeTags(tags: unknown): string[] {
 // collisions retry with -2..-9 suffixes, then a random suffix; each attempt is
 // its own transaction because a unique violation aborts the enclosing one.
 export async function createModel(input: CreateModelInput, db: Database = getDb()): Promise<ModelRow> {
-  const title = typeof input.title === "string" ? input.title.trim().slice(0, 80) : "";
-  if (!title) throw new Error("Model title is required");
+  const title = normalizeTitle(input.title);
   const description = typeof input.description === "string" ? input.description.trim().slice(0, 1_000) : "";
   const license: License = LICENSES.includes(input.license as License) ? input.license as License : "CC-BY-4.0";
   const visibility: Visibility = VISIBILITIES.includes(input.visibility as Visibility) ? input.visibility as Visibility : "public";
@@ -130,9 +135,7 @@ export interface ModelMetadataPatch {
 export async function updateModelMetadata(modelId: string, patch: ModelMetadataPatch, db: Database = getDb()): Promise<ModelRow | null> {
   const changes: Record<string, unknown> = { updatedAt: sql`now()` };
   if (patch.title !== undefined) {
-    const title = typeof patch.title === "string" ? patch.title.trim().slice(0, 80) : "";
-    if (!title) throw new Error("Model title is required");
-    changes.title = title;
+    changes.title = normalizeTitle(patch.title);
   }
   if (patch.description !== undefined) {
     changes.description = typeof patch.description === "string" ? patch.description.trim().slice(0, 1_000) : "";
@@ -158,15 +161,25 @@ export async function deleteModel(modelId: string, db: Database = getDb()): Prom
   return rows.length > 0;
 }
 
-// Publishing an update (§2): insert the next history row and move the head
-// pointer atomically. Callers pass an already-saved revision id.
-export async function publishModelVersion(modelId: string, revisionId: string, db: Database = getDb()): Promise<{ version: number }> {
+// Publishing an update (§2): insert the next history row, move the head, and
+// optionally synchronize the public title from the draft name atomically.
+export async function publishModelVersion(
+  modelId: string,
+  revisionId: string,
+  db: Database = getDb(),
+  options: { title?: unknown } = {},
+): Promise<{ version: number }> {
+  const title = options.title === undefined ? undefined : normalizeTitle(options.title);
   return db.transaction(async (tx) => {
     const [current] = await tx.select({ max: sql<number>`coalesce(max(${modelRevisions.version}), 0)` })
       .from(modelRevisions).where(eq(modelRevisions.modelId, modelId));
     const version = Number(current.max) + 1;
     await tx.insert(modelRevisions).values({ modelId, revisionId, version });
-    await tx.update(models).set({ headRevisionId: revisionId, updatedAt: sql`now()` }).where(eq(models.id, modelId));
+    await tx.update(models).set({
+      headRevisionId: revisionId,
+      updatedAt: sql`now()`,
+      ...(title === undefined ? {} : { title }),
+    }).where(eq(models.id, modelId));
     return { version };
   });
 }

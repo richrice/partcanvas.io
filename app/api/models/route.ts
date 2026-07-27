@@ -2,7 +2,7 @@ import { CORS_HEADERS, corsPreflight } from "@/lib/api/cors";
 import { checkRateLimit, PUBLISH_RULE, rateLimitResponse } from "@/lib/api/rate-limit.server";
 import { resolveApiToken } from "@/lib/auth/tokens.server";
 import { getDb } from "@/lib/db/client.server";
-import { createModel, publishModelVersion, readModel } from "@/lib/models/models.server";
+import { createModel, publishModelVersion, readModel, updateModelMetadata } from "@/lib/models/models.server";
 import { saveRevision, setRevisionThumbnail } from "@/lib/models/revisions.server";
 import { decodeThumbnailDataUrl, THUMBNAIL_VERSION } from "@/lib/models/thumbnails.server";
 import type { HostedModelDraft } from "@/lib/models/types";
@@ -51,11 +51,19 @@ export async function POST(request: Request) {
       }
       const { record } = await saveRevision(body, db);
       if (record.id === model.headRevisionId) {
+        if (record.name !== model.title) {
+          const renamed = await updateModelMetadata(model.id, { title: record.name }, db);
+          if (!renamed) throw new Error("Model not found");
+          return Response.json({ renamed: true, revision: { id: record.id }, url: `/m/${record.id}` }, {
+            status: 200,
+            headers: { "cache-control": "no-store", ...CORS_HEADERS },
+          });
+        }
         return Response.json({ error: "This is already the current version — nothing changed" }, { status: 409, headers: CORS_HEADERS });
       }
       const thumbnail = decodeThumbnailDataUrl(body.thumbnail);
       if (thumbnail) await setRevisionThumbnail(record.id, thumbnail, THUMBNAIL_VERSION, db);
-      const { version } = await publishModelVersion(model.id, record.id, db);
+      const { version } = await publishModelVersion(model.id, record.id, db, { title: record.name });
       return Response.json({ version, revision: { id: record.id }, url: `/m/${record.id}` }, {
         status: 201,
         headers: { "cache-control": "no-store", ...CORS_HEADERS },
