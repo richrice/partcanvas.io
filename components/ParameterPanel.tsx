@@ -28,6 +28,14 @@ function colorHex(value: ParameterValue, fallback: ParameterValue) {
   return colors.rgbToHex(colorComponents(value) ?? colorComponents(fallback) ?? [0.18, 0.75, 0.66]).slice(0, 7);
 }
 
+// Readout precision must cover the step (0.05 shown as "0.1" misreports the
+// actual value), capped so float noise can't stretch the label.
+function stepDecimals(step: number | undefined) {
+  if (!Number.isFinite(step) || (step as number) >= 1 || (step as number) <= 0) return 0;
+  const fraction = String(step).split(".")[1] ?? "";
+  return Math.min(fraction.length, 3);
+}
+
 export function ParameterPanel({ parameters, values, presets = [], selectedPreset = "", onChange, onPresetChange, onReset }: ParameterPanelProps) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const groups = parameters.reduce<Record<string, ModelParameter[]>>((output, parameter) => {
@@ -92,7 +100,7 @@ export function ParameterPanel({ parameters, values, presets = [], selectedPrese
                 <label className="parameter-control" key={parameter.name}>
                   <span className="parameter-label">
                     <span>{parameter.label}</span>
-                    {parameter.type === "number" && <output>{Number(value).toFixed(Number(parameter.step) < 1 ? 1 : 0)}{parameter.unit ? ` ${parameter.unit}` : ""}</output>}
+                    {parameter.type === "number" && <output>{Number(value).toFixed(stepDecimals(parameter.step))}{parameter.unit ? ` ${parameter.unit}` : ""}</output>}
                     {parameter.type === "vector" && <output>[{(Array.isArray(value) ? value : parameter.defaultValue as number[]).join(", ")}]</output>}
                     {parameter.type === "color" && <output>{selectedColor.toUpperCase()}</output>}
                   </span>
