@@ -20,6 +20,7 @@ import {
   type FdmGeometryAnalysis,
   type MaterialEstimate,
   type ModelPlacement,
+  type PlatePlan,
   type PrintSettings,
   type PrinterProfile,
 } from "@/lib/fdm";
@@ -30,6 +31,7 @@ interface PrintSetupPanelProps {
   printer: PrinterProfile;
   placement: ModelPlacement;
   fit: BedFitAnalysis | null;
+  platePlan: PlatePlan | null;
   geometry: FdmGeometryAnalysis | null;
   material: MaterialEstimate | null;
   hasModel: boolean;
@@ -38,6 +40,12 @@ interface PrintSetupPanelProps {
   onPlacementChange: (placement: ModelPlacement) => void;
   onBestFit: () => void;
   onFitPlate: () => void;
+}
+
+// A spread-out multi-piece layout can overflow the plate while every piece
+// still prints; the plan says how many plates the pieces pack onto.
+function fitsAcrossPlates(fit: BedFitAnalysis | null, platePlan: PlatePlan | null): PlatePlan | null {
+  return fit && !fit.fits && platePlan && platePlan.allPartsFit ? platePlan : null;
 }
 
 const format = (value: number, digits = 1) => Number.isFinite(value) ? value.toFixed(Math.abs(value) >= 100 ? 0 : digits) : "—";
@@ -74,19 +82,28 @@ function NumericField({ label, value, min = 0, max = 10_000, step = 1, suffix = 
   );
 }
 
-export function PrintFitBadge({ printer, fit, onClick }: { printer: PrinterProfile; fit: BedFitAnalysis | null; onClick: () => void }) {
-  const state = fit?.fits ? "fits" : fit ? "overflow" : "empty";
+export function PrintFitBadge({ printer, fit, platePlan, onClick }: { printer: PrinterProfile; fit: BedFitAnalysis | null; platePlan: PlatePlan | null; onClick: () => void }) {
+  const acrossPlates = fitsAcrossPlates(fit, platePlan);
+  const state = fit?.fits ? "fits" : acrossPlates ? "plates" : fit ? "overflow" : "empty";
   const overflow = fit?.overflow
     .map((value, index) => value > 0.005 ? `${["X", "Y", "Z"][index]} +${format(value)} mm` : "")
     .filter(Boolean)
     .join(" · ");
   return (
     <button className={`print-fit-badge ${state}`} type="button" onClick={onClick} aria-label="Open printer and build plate settings">
-      <span className="print-fit-icon">{fit?.fits ? <Check size={15} /> : fit ? <TriangleAlert size={15} /> : <Printer size={15} />}</span>
+      <span className="print-fit-icon">{fit?.fits || acrossPlates ? <Check size={15} /> : fit ? <TriangleAlert size={15} /> : <Printer size={15} />}</span>
       <span>
-        <strong>{fit?.fits ? `Fits ${printer.shortName}` : fit ? "Outside build volume" : printer.shortName}</strong>
+        <strong>{fit?.fits
+          ? `Fits ${printer.shortName}`
+          : acrossPlates
+            ? acrossPlates.plateCount === 1 ? `Fits ${printer.shortName} arranged` : `Fits ${printer.shortName} on ${acrossPlates.plateCount} plates`
+            : fit ? "Outside build volume" : printer.shortName}</strong>
         <small>{fit
-          ? fit.fits ? `${format(fit.spare[0])} × ${format(fit.spare[1])} × ${format(fit.spare[2])} mm spare` : `${overflow || "Placement crosses the printable edge"} over`
+          ? fit.fits
+            ? `${format(fit.spare[0])} × ${format(fit.spare[1])} × ${format(fit.spare[2])} mm spare`
+            : acrossPlates
+              ? `${acrossPlates.partCount} pieces · largest ${format(acrossPlates.largestPart[0])} × ${format(acrossPlates.largestPart[1])} mm`
+              : `${overflow || "Placement crosses the printable edge"} over`
           : `${printer.width} × ${printer.depth} × ${printer.height} mm`}</small>
       </span>
     </button>
@@ -99,6 +116,7 @@ export function PrintSetupPanel({
   printer,
   placement,
   fit,
+  platePlan,
   geometry,
   material,
   hasModel,
@@ -114,10 +132,23 @@ export function PrintSetupPanel({
   const updateCustom = (patch: Partial<PrintSettings["customProfile"]>) => updateSettings({
     customProfile: { ...settings.customProfile, ...patch },
   });
+  const acrossPlates = fitsAcrossPlates(fit, platePlan);
   const warnings = geometry ? [
     fit?.fits
       ? { level: "ok", title: "Inside build volume", detail: `${format(fit.edgeClearance)} mm to the nearest bed edge` }
-      : { level: "error", title: "Does not fit this printer", detail: "Rotate, reposition, or choose a larger build volume." },
+      : acrossPlates
+        ? {
+            level: "ok",
+            title: acrossPlates.plateCount === 1 ? "Fits after arranging" : `Fits across ${acrossPlates.plateCount} build plates`,
+            detail: `${acrossPlates.partCount} pieces; largest ${format(acrossPlates.largestPart[0])} × ${format(acrossPlates.largestPart[1])} × ${format(acrossPlates.largestPart[2])} mm. 3MF export assigns BambuStudio/OrcaSlicer plates.`,
+          }
+        : {
+            level: "error",
+            title: "Does not fit this printer",
+            detail: platePlan && !platePlan.allPartsFit
+              ? `The largest piece is ${format(platePlan.largestPart[0])} × ${format(platePlan.largestPart[1])} × ${format(platePlan.largestPart[2])} mm and exceeds the printable area.`
+              : "Rotate, reposition, or choose a larger build volume.",
+          },
     geometry.contactArea >= 10 && geometry.contactRatio >= 0.02
       ? { level: "ok", title: "Bed contact looks usable", detail: `${format(geometry.contactArea)} mm² touching the plate` }
       : { level: "warning", title: "Small bed contact area", detail: `${format(geometry.contactArea)} mm² detected; a brim or new orientation may help.` },
@@ -126,7 +157,7 @@ export function PrintSetupPanel({
       : { level: "ok", title: "No large severe overhangs", detail: "Geometry-only check at a 50° threshold." },
     geometry.minDimension < settings.nozzleDiameter * 2
       ? { level: "warning", title: "Very small overall dimension", detail: `${format(geometry.minDimension, 2)} mm is under two nozzle widths.` }
-      : { level: "info", title: `${geometry.partCount} printable volume${geometry.partCount === 1 ? "" : "s"}`, detail: geometry.partCount > 1 ? "Relative positions and colors will be preserved." : "The model will export as one positioned volume." },
+      : { level: "info", title: `${geometry.partCount} printable volume${geometry.partCount === 1 ? "" : "s"}`, detail: geometry.partCount > 1 ? "Colors are preserved; a layout too large for one plate is packed onto numbered plates in 3MF exports." : "The model will export as one positioned volume." },
   ] : [];
 
   return (

@@ -1,4 +1,4 @@
-import { geometries, transforms } from "@jscad/modeling";
+import { geometries, measurements, transforms } from "@jscad/modeling";
 import type { Geom3 } from "@jscad/modeling/src/geometries/types";
 import { isGeom3, type CadGeometry } from "./scad/evaluator";
 
@@ -63,6 +63,27 @@ export interface FdmGeometryAnalysis {
   severeOverhangRatio: number;
   minDimension: number;
   partCount: number;
+}
+
+export interface PackedFootprint {
+  plate: number;
+  centerX: number;
+  centerY: number;
+  fits: boolean;
+}
+
+export interface FootprintPacking {
+  plateCount: number;
+  allFit: boolean;
+  placements: PackedFootprint[];
+}
+
+export interface PlatePlan {
+  plateCount: number;
+  partCount: number;
+  allPartsFit: boolean;
+  largestPart: [number, number, number];
+  placements: PackedFootprint[];
 }
 
 export interface MaterialProfile {
@@ -238,6 +259,112 @@ export function analyzeBedFit(bounds: ModelBounds, printer: PrinterProfile, safe
     utilization: printableWidth > 0 && printableDepth > 0
       ? Math.min(1, (modelSize[0] * modelSize[1]) / (printableWidth * printableDepth))
       : 1,
+  };
+}
+
+export function printableArea(printer: PrinterProfile, safetyMargin: number): [number, number, number] {
+  const margin = Math.max(0, safetyMargin);
+  if (printer.bedShape === "circular") {
+    // Inscribed square of the printable circle.
+    const side = Math.max(0, (Math.min(printer.width, printer.depth) - margin * 2) / Math.SQRT2);
+    return [side, side, Math.max(0, printer.height)];
+  }
+  return [
+    Math.max(0, printer.width - margin * 2),
+    Math.max(0, printer.depth - margin * 2),
+    Math.max(0, printer.height),
+  ];
+}
+
+const PART_SPACING = 5;
+
+// Shelf-pack footprints onto as many plates as needed: deepest first, rows
+// left to right, a new plate when the next row no longer fits. Positions are
+// centers in per-plate coordinates with each plate's packed content centered
+// on its own origin. A footprint larger than the plate is flagged unfit and
+// parked alone on its own plate so the remaining parts still pack.
+export function packFootprints(
+  footprints: [number, number, number][],
+  area: [number, number, number],
+  spacing = PART_SPACING,
+): FootprintPacking {
+  const order = footprints
+    .map((size, index) => ({ size, index }))
+    .sort((a, b) => b.size[1] - a.size[1] || b.size[0] - a.size[0]);
+  const placements: PackedFootprint[] = footprints.map(() => ({ plate: 0, centerX: 0, centerY: 0, fits: true }));
+  const plateExtents: { minX: number; maxX: number; minY: number; maxY: number }[] = [];
+  let allFit = true;
+  let plate = -1;
+  let cursorX = 0;
+  let cursorY = 0;
+  let rowDepth = 0;
+
+  const openPlate = () => {
+    plate += 1;
+    cursorX = 0;
+    cursorY = 0;
+    rowDepth = 0;
+    plateExtents[plate] = { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity };
+  };
+  openPlate();
+
+  for (const { size, index } of order) {
+    const [width, depth, height] = size;
+    const fits = width <= area[0] + 1e-9 && depth <= area[1] + 1e-9 && height <= area[2] + 1e-9;
+    if (!fits) {
+      allFit = false;
+      if (cursorX > 0 || cursorY > 0) openPlate();
+      placements[index] = { plate, centerX: width / 2, centerY: depth / 2, fits: false };
+      plateExtents[plate] = { minX: 0, maxX: width, minY: 0, maxY: depth };
+      openPlate();
+      continue;
+    }
+    if (cursorX > 0 && cursorX + width > area[0] + 1e-9) {
+      cursorX = 0;
+      cursorY += rowDepth + spacing;
+      rowDepth = 0;
+    }
+    if (cursorY > 0 && cursorY + depth > area[1] + 1e-9) openPlate();
+    placements[index] = { plate, centerX: cursorX + width / 2, centerY: cursorY + depth / 2, fits: true };
+    const extent = plateExtents[plate];
+    extent.minX = Math.min(extent.minX, cursorX);
+    extent.maxX = Math.max(extent.maxX, cursorX + width);
+    extent.minY = Math.min(extent.minY, cursorY);
+    extent.maxY = Math.max(extent.maxY, cursorY + depth);
+    cursorX += width + spacing;
+    rowDepth = Math.max(rowDepth, depth);
+  }
+
+  // The last openPlate() after an oversized part may have stayed empty.
+  const usedPlates = plateExtents.filter((extent) => extent.minX !== Infinity);
+  for (const placement of placements) {
+    const extent = plateExtents[placement.plate];
+    placement.plate = plateExtents.slice(0, placement.plate).filter((candidate) => candidate.minX !== Infinity).length;
+    placement.centerX -= (extent.minX + extent.maxX) / 2;
+    placement.centerY -= (extent.minY + extent.maxY) / 2;
+  }
+  return { plateCount: Math.max(1, usedPlates.length), allFit, placements };
+}
+
+export function boundsOfSolid(solid: Geom3): ModelBounds {
+  const [min, max] = measurements.measureBoundingBox(solid) as [[number, number, number], [number, number, number]];
+  return { min, max };
+}
+
+export function planPlates(parts: CadGeometry[], printer: PrinterProfile, safetyMargin: number): PlatePlan {
+  const solids = parts.filter(isGeom3) as Geom3[];
+  const footprints = solids.map((solid) => dimensionsFromBounds(boundsOfSolid(solid)));
+  const largestPart = footprints.reduce<[number, number, number]>(
+    (largest, size) => size[0] * size[1] > largest[0] * largest[1] ? size : largest,
+    [0, 0, 0],
+  );
+  const packing = packFootprints(footprints, printableArea(printer, safetyMargin));
+  return {
+    plateCount: packing.plateCount,
+    partCount: solids.length,
+    allPartsFit: packing.allFit,
+    largestPart,
+    placements: packing.placements,
   };
 }
 

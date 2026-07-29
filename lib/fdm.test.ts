@@ -7,7 +7,9 @@ import {
   bestBedRotation,
   estimateMaterial,
   normalizePrintSettings,
+  packFootprints,
   placeGeometriesOnBed,
+  planPlates,
   type ModelBounds,
   type PrinterProfile,
 } from "./fdm";
@@ -96,5 +98,72 @@ describe("FDM print estimates", () => {
     expect(normalized.customProfile.bedShape).toBe("circular");
     expect(normalized.safetyMargin).toBe(100);
     expect(normalized.nozzleDiameter).toBe(0.4);
+  });
+});
+
+describe("packFootprints", () => {
+  it("packs four pieces onto one plate when rows fit", () => {
+    const packing = packFootprints(
+      [[100, 100, 10], [100, 100, 10], [100, 100, 10], [100, 100, 10]],
+      [210, 210, 200],
+    );
+    expect(packing.plateCount).toBe(1);
+    expect(packing.allFit).toBe(true);
+    const centers = packing.placements.map((placement) => [placement.centerX, placement.centerY]);
+    expect(new Set(centers.map((center) => center.join(","))).size).toBe(4);
+  });
+
+  it("overflows onto a second plate when depth runs out", () => {
+    const packing = packFootprints(
+      [[100, 100, 10], [100, 100, 10], [100, 100, 10]],
+      [210, 105, 200],
+    );
+    expect(packing.plateCount).toBe(2);
+    expect(packing.allFit).toBe(true);
+    const plates = packing.placements.map((placement) => placement.plate).sort();
+    expect(plates).toEqual([0, 0, 1]);
+  });
+
+  it("flags an oversized part and still packs the rest", () => {
+    const packing = packFootprints(
+      [[300, 50, 10], [100, 100, 10], [100, 100, 10]],
+      [210, 210, 200],
+    );
+    expect(packing.allFit).toBe(false);
+    expect(packing.placements[0].fits).toBe(false);
+    expect(packing.placements[1].fits).toBe(true);
+    expect(packing.placements[2].fits).toBe(true);
+    expect(packing.placements[1].plate).not.toBe(packing.placements[0].plate);
+  });
+
+  it("centers each plate's content on its own origin", () => {
+    const packing = packFootprints([[100, 100, 10]], [210, 210, 200]);
+    expect(packing.placements[0].centerX).toBeCloseTo(0);
+    expect(packing.placements[0].centerY).toBeCloseTo(0);
+  });
+});
+
+describe("planPlates", () => {
+  it("plans plates for disjoint solids and reports the largest part", () => {
+    const parts = [
+      primitives.cuboid({ size: [150, 120, 10], center: [0, 0, 5] }),
+      primitives.cuboid({ size: [150, 120, 10], center: [400, 0, 5] }),
+      primitives.cuboid({ size: [40, 30, 10], center: [800, 0, 5] }),
+    ];
+    const plan = planPlates(parts, rectangularPrinter, 5);
+    expect(plan.partCount).toBe(3);
+    expect(plan.allPartsFit).toBe(true);
+    expect(plan.plateCount).toBe(2);
+    expect(plan.largestPart[0]).toBeCloseTo(150);
+    expect(plan.largestPart[1]).toBeCloseTo(120);
+  });
+
+  it("reports an unfit plan when one part exceeds the printable area", () => {
+    const parts = [
+      primitives.cuboid({ size: [500, 40, 10], center: [0, 0, 5] }),
+      primitives.cuboid({ size: [40, 40, 10], center: [400, 0, 5] }),
+    ];
+    const plan = planPlates(parts, rectangularPrinter, 5);
+    expect(plan.allPartsFit).toBe(false);
   });
 });

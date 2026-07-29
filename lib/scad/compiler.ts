@@ -7,7 +7,7 @@ import { evaluate, isGeom2, isGeom3, type CadGeometry } from "./evaluator";
 import { extractParameters, validateParameterOverrides, type ModelParameter, type ParameterInput } from "./parameters";
 import { parse } from "./parser";
 import { resolveSourceFiles } from "./files";
-import { serializeBambu3mf } from "./bambu-3mf";
+import { serializeBambu3mf, type PlateSpec } from "./bambu-3mf";
 import { serializeStep } from "./step";
 
 export interface ModelMetrics {
@@ -174,7 +174,7 @@ function chunksToBytes(chunks: ArrayBuffer[] | Uint8Array[] | string[]): Uint8Ar
   return output;
 }
 
-export function serializeGeometry(input: CadGeometry | CadGeometry[], format: ExportFormat, name = "partcanvas-model"): SerializedModel {
+export function serializeGeometry(input: CadGeometry | CadGeometry[], format: ExportFormat, name = "partcanvas-model", options?: { plate?: PlateSpec }): SerializedModel {
   const items = Array.isArray(input) ? input : [input];
   if (format === "svg" || format === "dxf") {
     const flats = items.filter(isGeom2);
@@ -197,7 +197,7 @@ export function serializeGeometry(input: CadGeometry | CadGeometry[], format: Ex
     return { data: serializeStep(geometry, name), extension: "step", mimeType: "model/step" };
   }
   return {
-    data: serializeBambu3mf(solids, name),
+    data: serializeBambu3mf(solids, name, options?.plate),
     extension: "3mf",
     mimeType: "model/3mf",
   };

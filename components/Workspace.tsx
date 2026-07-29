@@ -58,6 +58,8 @@ import {
   estimateMaterial,
   normalizePrintSettings,
   placeGeometriesOnBed,
+  planPlates,
+  printableArea,
   selectedPrinter,
   type ModelPlacement,
   type PrintSettings,
@@ -273,6 +275,9 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
   const bedFit = useMemo(() => modelBounds
     ? analyzeBedFit(modelBounds, printer, printSettings.safetyMargin, placement)
     : null, [modelBounds, placement, printSettings.safetyMargin, printer]);
+  const platePlan = useMemo(() => result?.dimension === 3 && result.parts.length > 1
+    ? planPlates(result.parts, printer, printSettings.safetyMargin)
+    : null, [printSettings.safetyMargin, printer, result]);
   const fdmGeometry = useMemo(() => result?.dimension === 3 && result.geometry && modelBounds
     ? analyzeFdmGeometry(result.parts.length ? result.parts : result.geometry, modelBounds)
     : null, [modelBounds, result]);
@@ -369,7 +374,9 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
     const exportGeometry = result.dimension === 3 && modelBounds && printSettings.exportPlacement
       ? placeGeometriesOnBed(result.parts.length ? result.parts : [result.geometry], modelBounds, placement)
       : result.parts.length ? result.parts : result.geometry;
-    const serialized = serializeGeometry(exportGeometry, effectiveExportFormat, modelName || "partcanvas-model");
+    const serialized = serializeGeometry(exportGeometry, effectiveExportFormat, modelName || "partcanvas-model", result.dimension === 3
+      ? { plate: { printable: printableArea(printer, printSettings.safetyMargin), stride: printer.width * 1.2 } }
+      : undefined);
     const data = serialized.data;
     const blob = new Blob([data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer], { type: serialized.mimeType });
     const url = URL.createObjectURL(blob);
@@ -1053,13 +1060,14 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
             <div className={`render-status ${error ? "error" : ""}`}>
               {compiling ? <><LoaderCircle className="spinner" size={14} /> Compiling…</> : error ? <><TriangleAlert size={14} /> {error}</> : <><span className="status-dot" /> Ready</>}
             </div>
-            {result?.dimension !== 2 ? <PrintFitBadge printer={printer} fit={bedFit} onClick={() => setShowPrintSetup(true)} /> : null}
+            {result?.dimension !== 2 ? <PrintFitBadge printer={printer} fit={bedFit} platePlan={platePlan} onClick={() => setShowPrintSetup(true)} /> : null}
             <PrintSetupPanel
               open={showPrintSetup && result?.dimension !== 2}
               settings={printSettings}
               printer={printer}
               placement={placement}
               fit={bedFit}
+              platePlan={platePlan}
               geometry={fdmGeometry}
               material={materialEstimate}
               hasModel={Boolean(result?.geometry && result.dimension === 3)}
