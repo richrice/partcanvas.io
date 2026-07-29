@@ -1053,7 +1053,7 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
               placement={placement}
               showBed={printSettings.showBed && result?.dimension !== 2}
               showBuildVolume={printSettings.showBuildVolume}
-              modelFits={bedFit?.fits ?? true}
+              modelFits={(bedFit?.fits ?? true) || Boolean(platePlan?.allPartsFit)}
               onUserOrbit={leaveStandardView}
               captureRef={thumbnailCaptureRef}
             />
