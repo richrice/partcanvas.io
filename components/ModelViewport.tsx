@@ -100,6 +100,41 @@ function createBufferGeometry(sources: Geom3[]) {
   return output;
 }
 
+const scratchSize = new THREE.Vector3();
+
+// Radius of a sphere centred on the origin that contains everything drawn: the
+// placed model, and the build volume when a printer is selected.
+function contentRadius(current: ViewportState) {
+  const box = current.mesh?.geometry.boundingBox;
+  const modelRadius = box
+    ? box.getSize(scratchSize).length() / 2 + Math.hypot(current.placement.x, current.placement.y)
+    : 0;
+  const bedRadius = current.printer
+    ? Math.hypot(current.printer.width, current.printer.depth) / 2 + current.printer.height
+    : 0;
+  return Math.max(modelRadius, bedRadius, 14);
+}
+
+// The bed overlay stacks its plate, grid, outline, printable boundary and axes
+// inside a 0.15 mm band around z = 0 — exactly where the model's bottom face
+// sits. Depth precision is governed by the near plane, so deriving it from the
+// model size (near = radius/1000) put a 250 mm bed 700 mm from a near plane of
+// 0.37 mm, quantising depth to ~0.08 mm: coarser than every gap between those
+// layers, which then fought and broke solid lines into fragments. Fit the clip
+// planes to the content sphere around the orbit target instead, and refresh
+// them as the camera moves so scroll-wheel zoom stays correct too.
+function updateClipping(current: ViewportState) {
+  const distance = current.camera.position.distanceTo(current.controls.target);
+  const radius = contentRadius(current) + current.controls.target.length();
+  // The floors keep the near plane sane once the camera is inside the sphere.
+  const near = Math.max(distance - radius, distance / 100, 0.05);
+  const far = distance + radius;
+  if (Math.abs(current.camera.near - near) < near * 0.01 && Math.abs(current.camera.far - far) < far * 0.01) return;
+  current.camera.near = near;
+  current.camera.far = far;
+  current.camera.updateProjectionMatrix();
+}
+
 // Camera offsets (in units of the fit radius) for the standard CAD views. The
 // top view keeps a slight Y offset so the Z-up orbit controls never hit the
 // gimbal pole exactly.
@@ -128,9 +163,7 @@ function fitView(current: ViewportState, view: ViewPreset = "perspective", frame
   const offset = VIEW_OFFSETS[view];
   current.controls.target.copy(center);
   current.camera.position.copy(center).add(new THREE.Vector3(radius * offset[0], radius * offset[1], radius * offset[2]));
-  current.camera.near = Math.max(radius / 1000, 0.05);
-  current.camera.far = radius * 40;
-  current.camera.updateProjectionMatrix();
+  updateClipping(current);
   // The default fog and zoom limits suit desk-sized parts; scale them up for
   // large models (e.g. automotive trim) so the fitted view isn't fogged out.
   const fog = current.scene.fog as THREE.Fog | null;
@@ -345,14 +378,17 @@ export function ModelViewport({
     observer.observe(host);
     resize();
 
+    const viewport: ViewportState = { scene, camera, controls, renderer, modelGroup, bedGroup, hasFitModel: false, printer, placement };
+    state.current = viewport;
+
     let frame = 0;
     const animate = () => {
       frame = requestAnimationFrame(animate);
       controls.update();
+      updateClipping(viewport);
       renderer.render(scene, camera);
     };
     animate();
-    state.current = { scene, camera, controls, renderer, modelGroup, bedGroup, hasFitModel: false, printer, placement };
     if (captureRef) captureRef.current = () => (state.current ? capturePng(state.current) : null);
     return () => {
       cancelAnimationFrame(frame);
