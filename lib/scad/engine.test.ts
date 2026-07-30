@@ -24,6 +24,17 @@ describe("OpenSCAD-compatible parser", () => {
     expect(() => parse("cube([1, 2,);")).toThrow(/1:12/);
   });
 
+  it("does not mistake a string literal for the delimiter it contains", () => {
+    const closingParen = compileScad(`echo(str("count", " (of 3)", ")"));`);
+    expect(closingParen.messages).toEqual(["count (of 3))"]);
+
+    const closingBracket = compileScad(`labels = ["]", "[", "["]; echo(labels);`);
+    expect(closingBracket.messages).toEqual([`["]","[","["]`]);
+
+    expect(() => parse(`module m() { echo(")"); } m();`)).not.toThrow();
+    expect(() => parse(`function f(x) = x; echo(f(")"));`)).not.toThrow();
+  });
+
   it("parses functions, let expressions, and list comprehensions", () => {
     const program = parse(`
       function inset(v, amount = 2) = let(inner = v - amount * 2) max(1, inner);

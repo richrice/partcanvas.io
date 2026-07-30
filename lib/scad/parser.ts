@@ -1,5 +1,5 @@
 import type { Argument, Binding, Expression, ModuleParameter, Program, Statement } from "./ast";
-import { ScadSyntaxError, tokenize } from "./lexer";
+import { ScadSyntaxError, tokenize, type Token } from "./lexer";
 
 const PRECEDENCE: Record<string, number> = {
   "||": 1,
@@ -23,14 +23,18 @@ export function parse(source: string): Program {
   let current = 0;
   const peek = (offset = 0) => tokens[Math.min(current + offset, tokens.length - 1)];
   const take = () => tokens[current++];
+  // Only symbols and keywords are ever matched by value. A string literal whose
+  // text happens to be a delimiter — echo(")") or ["]"] — must not be mistaken
+  // for the delimiter itself.
+  const isSyntax = (token: Token) => token.kind === "symbol" || token.kind === "identifier";
   const match = (value: string) => {
-    if (peek().value !== value) return false;
+    if (!isSyntax(peek()) || peek().value !== value) return false;
     current += 1;
     return true;
   };
   const expect = (value: string) => {
     const token = take();
-    if (token.value !== value) throw new ScadSyntaxError(`Expected '${value}', found '${token.value || "end of input"}'`, token.loc);
+    if (!isSyntax(token) || token.value !== value) throw new ScadSyntaxError(`Expected '${value}', found '${token.value || "end of input"}'`, token.loc);
     return token;
   };
   const expectIdentifier = () => {
