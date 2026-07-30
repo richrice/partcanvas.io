@@ -168,6 +168,7 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
   const [placement, setPlacement] = useState<ModelPlacement>(DEFAULT_MODEL_PLACEMENT);
   const [exportFormat, setExportFormat] = useState<ExportFormat>("stl");
   const [showFormats, setShowFormats] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(() => !initialModel);
   const [mobilePanel, setMobilePanel] = useState<"code" | "preview" | "parameters">("preview");
   const [notice, setNotice] = useState<{ text: string; kind: "success" | "error" } | null>(null);
   const [publishing, setPublishing] = useState(false);
@@ -1016,12 +1017,19 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
 
       <div className="mobile-tabs">
         {(["code", "preview", "parameters"] as const).map((panel) => (
-          <button className={mobilePanel === panel ? "active" : ""} onClick={() => setMobilePanel(panel)} key={panel}>{panel}</button>
+          <button
+            className={mobilePanel === panel ? "active" : ""}
+            onClick={() => {
+              if (panel === "code") setEditorOpen(true);
+              setMobilePanel(panel);
+            }}
+            key={panel}
+          >{panel}</button>
         ))}
       </div>
 
-      <section className="workspace">
-        <div className={`workspace-panel editor-panel ${mobilePanel === "code" ? "mobile-active" : ""}`}>
+      <section className={`workspace ${editorOpen ? "" : "editor-closed"}`}>
+        {editorOpen && <div className={`workspace-panel editor-panel ${mobilePanel === "code" ? "mobile-active" : ""}`}>
           <div className="panel-toolbar">
             <div className="file-tab" title={modelName}><span className="language-icon">S</span><select aria-label="Active project file" value={activeFile} onChange={(event) => setActiveFile(event.target.value)}><option value="main.scad">main.scad</option>{editableFiles.map((name) => <option value={name} key={name}>{name}</option>)}</select>{assetFiles.length ? <span className="asset-count" title={`Imported assets: ${assetFiles.join(", ")}`}>{assetFiles.length} asset{assetFiles.length === 1 ? "" : "s"}</span> : null}{initialModel?.hostedId ? <span className="hosted-dot" title="Hosted model" /> : <span className="unsaved-dot" />}</div>
             <div className="toolbar-actions">
@@ -1069,7 +1077,7 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
             <span><Check size={12} /> OpenSCAD compatible</span>
             <span>Ln {cursorLocation.line}, Col {cursorLocation.column}</span>
           </div>
-        </div>
+        </div>}
 
         <div className={`workspace-panel preview-panel ${mobilePanel === "preview" ? "mobile-active" : ""}`}>
           <div className="panel-toolbar preview-toolbar">
@@ -1081,6 +1089,15 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
               ))}
             </div>
             <div className="toolbar-actions">
+              <button
+                className={`code-toggle ${editorOpen ? "active-tool" : ""}`}
+                aria-label={editorOpen ? "Close code editor" : "Open code editor"}
+                aria-pressed={editorOpen}
+                onClick={() => {
+                  if (editorOpen && mobilePanel === "code") setMobilePanel("preview");
+                  setEditorOpen(!editorOpen);
+                }}
+              ><Code2 size={15} /> Code</button>
               <button className={`print-setup-toggle ${showPrintSetup ? "active-tool" : ""}`} onClick={() => setShowPrintSetup((value) => !value)} title="Printer and build plate settings"><Printer size={15} /><span>Bed</span></button>
               <button className={wireframe ? "active-tool" : ""} onClick={() => setWireframe((value) => !value)} title="Toggle wireframe"><Braces size={15} /></button>
               <button className={autoRotate ? "active-tool" : ""} onClick={() => { setAutoRotate((value) => !value); leaveStandardView(); }} title="Auto rotate"><Rotate3D size={15} /></button>

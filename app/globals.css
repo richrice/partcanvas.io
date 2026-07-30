@@ -71,6 +71,7 @@ a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible
 .mobile-tabs { display: none; }
 
 .workspace { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: minmax(315px, 28%) minmax(420px, 1fr) minmax(285px, 24%); }
+.workspace.editor-closed { grid-template-columns: minmax(420px, 1fr) minmax(285px, 24%); }
 .workspace-panel { min-width: 0; min-height: 0; background: var(--panel); }
 .editor-panel { display: flex; flex-direction: column; border-right: 1px solid var(--line); }
 .preview-panel { display: grid; grid-template-rows: 39px minmax(220px, 1fr) 126px; border-right: 1px solid var(--line); }
@@ -241,6 +242,11 @@ input[type="range"]::-webkit-slider-thumb { margin-top: -5px; width: 13px; heigh
   .docs-button, .github-link, .share-button, .publish-button { display: none; }
 }
 
+@media (min-width: 721px) and (max-width: 1020px) {
+  .workspace.editor-closed { grid-template-columns: minmax(0, 1fr) minmax(285px, 35%); }
+  .workspace.editor-closed .customizer-panel { position: static; width: auto; z-index: auto; box-shadow: none; transform: none; transition: none; }
+}
+
 @media (max-width: 720px) {
   .topbar { height: 50px; flex-basis: 50px; padding: 0 9px; }
   /* Hide only the editor-topbar extras. A blanket .ghost-button hide here used
@@ -256,6 +262,7 @@ input[type="range"]::-webkit-slider-thumb { margin-top: -5px; width: 13px; heigh
   .preview-panel.mobile-active { display: grid; grid-template-rows: 39px 1fr 110px; }
   .customizer-panel { top: 88px; width: 100%; transform: none; box-shadow: none; }
   .view-tabs button:not(.active) { display: none; }
+  .code-toggle { display: none !important; }
   .viewport-hint { display: none; }
   .print-setup-toggle span { display: none; }
   .print-setup-popover { inset: 8px; width: auto; }
