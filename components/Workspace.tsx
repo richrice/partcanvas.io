@@ -67,6 +67,17 @@ import {
 
 const format = (value: number) => value >= 100 ? value.toFixed(0) : value >= 10 ? value.toFixed(1) : value.toFixed(2);
 
+const MODEL_EXPORT_FORMATS: { value: ExportFormat; label: string }[] = [
+  { value: "stl", label: "Binary STL" },
+  { value: "step", label: "STEP (faceted B-rep)" },
+  { value: "3mf", label: "BambuStudio 3MF (colors)" },
+  { value: "obj", label: "Wavefront OBJ" },
+];
+const SKETCH_EXPORT_FORMATS: { value: ExportFormat; label: string }[] = [
+  { value: "svg", label: "SVG" },
+  { value: "dxf", label: "AutoCAD DXF" },
+];
+
 export interface InitialWorkspaceModel {
   name: string;
   source: string;
@@ -156,6 +167,7 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
   const [printSettingsLoaded, setPrintSettingsLoaded] = useState(false);
   const [placement, setPlacement] = useState<ModelPlacement>(DEFAULT_MODEL_PLACEMENT);
   const [exportFormat, setExportFormat] = useState<ExportFormat>("stl");
+  const [showFormats, setShowFormats] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<"code" | "preview" | "parameters">("preview");
   const [notice, setNotice] = useState<{ text: string; kind: "success" | "error" } | null>(null);
   const [publishing, setPublishing] = useState(false);
@@ -267,9 +279,13 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
       });
   }, [source, parameters, projectFiles]);
 
-  const effectiveExportFormat: ExportFormat = result?.dimension === 2
-    ? (["svg", "dxf"].includes(exportFormat) ? exportFormat : "svg")
-    : (["stl", "obj", "3mf", "step"].includes(exportFormat) ? exportFormat : "stl");
+  // The format menu and the effective format read one list, so a format can
+  // never be offered without also being accepted, or accepted without being
+  // offered.
+  const formatOptions = result?.dimension === 2 ? SKETCH_EXPORT_FORMATS : MODEL_EXPORT_FORMATS;
+  const effectiveExportFormat: ExportFormat = formatOptions.some((option) => option.value === exportFormat)
+    ? exportFormat
+    : formatOptions[0].value;
   const printer = useMemo(() => selectedPrinter(printSettings), [printSettings]);
   const modelBounds = result?.dimension === 3 ? result.metrics.bounds : null;
   const bedFit = useMemo(() => modelBounds
@@ -632,15 +648,16 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
 
   // Popovers close on outside click and Escape; dialogs close on Escape.
   // (Backdrop clicks already close the dialogs via their overlay handlers.)
-  const anyMenuOpen = showExamples || showVersions || showForks || showReport;
+  const anyMenuOpen = showExamples || showVersions || showForks || showReport || showFormats;
   useEffect(() => {
     if (!anyMenuOpen) return;
     const close = (event: MouseEvent) => {
-      if ((event.target as Element | null)?.closest?.(".example-picker")) return;
+      if ((event.target as Element | null)?.closest?.(".example-picker, .export-picker")) return;
       setShowExamples(false);
       setShowVersions(false);
       setShowForks(false);
       setShowReport(false);
+      setShowFormats(false);
     };
     window.addEventListener("mousedown", close);
     return () => window.removeEventListener("mousedown", close);
@@ -653,6 +670,7 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
       setShowVersions(false);
       setShowForks(false);
       setShowReport(false);
+      setShowFormats(false);
       setShowPrintSetup(false);
       setShowPublishDialog(false);
       setShowEditDialog(false);
@@ -800,9 +818,36 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
               ? "2D sketches can be shared and exported, but only 3D models can be published"
               : result?.geometry ? "Publish to the community gallery" : "Fix the script so it produces geometry, then publish"}
           ><CloudUpload size={15} /> {publishing ? "Publishing…" : "Publish"}</button>
-          <button className="primary-button" onClick={downloadModel} disabled={!result?.geometry || compiling}>
-            <Download size={16} /> Export {effectiveExportFormat.toUpperCase()}
-          </button>
+          <div className="export-picker">
+            <button className="primary-button export-action" onClick={downloadModel} disabled={!result?.geometry || compiling}>
+              <Download size={16} /> Export {effectiveExportFormat.toUpperCase()}
+            </button>
+            <button
+              className="primary-button export-caret"
+              aria-label="Choose export format"
+              aria-haspopup="menu"
+              aria-expanded={showFormats}
+              onClick={() => setShowFormats((value) => !value)}
+              disabled={!result}
+            ><ChevronDown size={14} /></button>
+            {showFormats && (
+              <div className="example-menu format-menu" role="menu">
+                <span className="menu-label">FORMAT</span>
+                {formatOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    role="menuitemradio"
+                    aria-checked={option.value === effectiveExportFormat}
+                    onClick={() => { setExportFormat(option.value); setShowFormats(false); }}
+                  >
+                    <span className="format-check">{option.value === effectiveExportFormat ? <Check size={13} /> : null}</span>
+                    <span>{option.label}</span>
+                  </button>
+                ))}
+                <small className="format-note">{effectiveExportFormat === "3mf" ? "Includes filament color assignments" : "Generated locally in your browser"}</small>
+              </div>
+            )}
+          </div>
           <AuthMenu />
         </nav>
       </header>
@@ -1121,12 +1166,7 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
           />
           <div className="print-summary">
             <div><span>{result?.dimension === 2 ? "AREA" : "EST. VOLUME"}</span><strong>{result?.dimension === 2 && result.metrics.area !== null ? `${format(result.metrics.area)} mm²` : result?.metrics.volume ? `${format(result.metrics.volume / 1000)} cm³` : "—"}</strong></div>
-            <div><span>FORMAT</span><select aria-label="Export format" className="format-select" value={effectiveExportFormat} onChange={(event) => setExportFormat(event.target.value as ExportFormat)}>{result?.dimension === 2 ? <><option value="svg">SVG</option><option value="dxf">AutoCAD DXF</option></> : <><option value="stl">Binary STL</option><option value="step">STEP (faceted B-rep)</option><option value="3mf">BambuStudio 3MF (colors)</option><option value="obj">Wavefront OBJ</option></>}</select></div>
           </div>
-          <button className="export-large" onClick={downloadModel} disabled={!result?.geometry || compiling}>
-            <span><Download size={19} /> Download {effectiveExportFormat.toUpperCase()}</span>
-            <small>{effectiveExportFormat === "3mf" ? "Includes filament color assignments" : "Generated locally in your browser"}</small>
-          </button>
         </aside>
       </section>
       {notice && (
