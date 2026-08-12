@@ -45,7 +45,11 @@ function spawn(): Worker {
   if (!existsSync(WORKER_FILE)) {
     throw new Error(`Render worker bundle missing at ${WORKER_FILE}. Run 'node scripts/build-render-worker.mjs'.`);
   }
-  const worker = new Worker(WORKER_FILE);
+  // The worker starts from a one-line bootstrap, not from a path. Given a
+  // path, Turbopack treats the argument as an import, folds it to a literal,
+  // and fails the build on a file that only exists after the build. `require`
+  // runs inside the worker at runtime, where no bundler can reach it.
+  const worker = new Worker(`require(${JSON.stringify(WORKER_FILE)})`, { eval: true });
   // A worker that dies while parked must not be handed to the next job.
   worker.once("exit", () => {
     const index = idle.indexOf(worker);
