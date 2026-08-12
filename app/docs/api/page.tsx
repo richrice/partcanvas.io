@@ -127,7 +127,7 @@ export default function ApiDocsPage() {
           <section id="errors" className="docs-section">
             <h2>Error responses</h2>
             <p>Validation and compile failures use JSON with an <code>error</code> string. Invalid input returns <code>400</code>, oversized source returns <code>413</code>, and parse or geometry failures return <code>422</code>.</p>
-            <p><code>/api/render</code> compiles in a worker thread under a 25 second budget. A model that runs past the budget returns <code>503</code> with a <code>retry-after</code> header, and a full render queue returns <code>429</code>. Render such a model locally, or lower <code>$fn</code>.</p>
+            <p><code>/api/render</code> compiles in a worker thread under a 60 second budget. A model that runs past the budget returns <code>503</code> with a <code>retry-after</code> header, and a full render queue returns <code>429</code>. Render such a model locally, or lower <code>$fn</code>.</p>
           </section>
           <section id="rate-limits" className="docs-section">
             <h2>Rate limits</h2>

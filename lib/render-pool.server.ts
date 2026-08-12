@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { availableParallelism } from "node:os";
+import { availableParallelism, totalmem } from "node:os";
 import path from "node:path";
 import { Worker } from "node:worker_threads";
 import type { RenderWorkerRequest, RenderWorkerResponse } from "./render-worker.server";
@@ -14,9 +14,25 @@ import type { RenderWorkerRequest, RenderWorkerResponse } from "./render-worker.
 // terminated, which is the only way to stop synchronous CSG.
 
 const WORKER_FILE = path.join(process.cwd(), "worker-build", "render-worker.js");
-const MAX_WORKERS = Math.max(1, availableParallelism() - 1);
+
+// Memory bounds this pool long before CPU does. One heavy compile peaked near
+// 3 GB in production, and a 32-core container would otherwise run 31 of them
+// at once. Serial compiles on the request thread could never multiply like
+// that, so the pool has to cap itself. Half the limit is the compile budget;
+// the rest serves the app. constrainedMemory() reports the container limit,
+// where totalmem() reports the whole host.
+const HEAVY_COMPILE_BYTES = 3 * 1024 ** 3;
+const memoryLimitBytes = process.constrainedMemory() || totalmem();
+const MAX_WORKERS = Math.max(1, Math.min(
+  availableParallelism() - 1,
+  Math.floor(memoryLimitBytes / 2 / HEAVY_COMPILE_BYTES),
+));
 const QUEUE_LIMIT = MAX_WORKERS * 4;
-export const RENDER_BUDGET_MS = 25_000;
+
+// Cloudflare fronts partcanvas.io and cuts an origin request at 100 seconds —
+// that 524 is what started this work. The budget stays well under it, so a
+// slow model gets a readable JSON error instead of an HTML error page.
+export const RENDER_BUDGET_MS = 60_000;
 
 export class RenderBusyError extends Error {
   constructor() {
