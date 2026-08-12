@@ -1,14 +1,23 @@
 import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { getDb, type Database } from "../db/client.server";
 import { revisions } from "../db/schema";
-import { compileScad } from "../scad/compiler";
-import { CONTENT_ID, hashDraft, validateDraft } from "./draft.server";
+import { resolveSourceFiles } from "../scad/files";
+import { extractParameters } from "../scad/parameters";
+import { parse } from "../scad/parser";
+import { CONTENT_ID, hashDraft, validateDraft, validateMetrics } from "./draft.server";
 import type { HostedModel, HostedModelDraft } from "./types";
 
 // Postgres-backed revision store: immutable content-addressed records, the
 // git-like object layer under mutable models. Dedup is `ON CONFLICT DO
 // NOTHING` + read-back (the filesystem store's hard-link trick, in SQL).
 // Tests pass a PGlite database via the optional `db` parameter.
+//
+// Publishing resolves and parses the project but never evaluates it. Parsing
+// is bounded work that catches broken source; evaluating geometry is not — a
+// knurled container takes minutes on the request thread, which blocks every
+// other request and outlives the proxy timeout. So the parameter schema comes
+// from the source text, and the metrics come from the compile the publisher
+// already ran on this exact draft.
 
 export async function saveRevision(input: HostedModelDraft, db: Database = getDb()): Promise<{ record: HostedModel; created: boolean }> {
   const draft = validateDraft(input);
@@ -16,15 +25,16 @@ export async function saveRevision(input: HostedModelDraft, db: Database = getDb
   const existing = await readRevision(id, db);
   if (existing) return { record: existing, created: false };
 
-  const compiled = compileScad(draft.source, { files: draft.files, parameters: draft.parameters });
-  if (!compiled.geometry) throw new Error("The model must produce a 3D solid before it can be published");
+  const resolved = resolveSourceFiles(draft.source, draft.files);
+  parse(resolved.source);
+  for (const library of resolved.libraries) parse(library);
   const record: HostedModel = {
     version: 1,
     id,
     createdAt: new Date().toISOString(),
     ...draft,
-    parameterSchema: compiled.parameters,
-    metrics: compiled.metrics,
+    parameterSchema: extractParameters(resolved.source),
+    metrics: validateMetrics(input.metrics),
   };
   const inserted = await db.insert(revisions).values({ id, record }).onConflictDoNothing().returning({ id: revisions.id });
   if (inserted.length > 0) return { record, created: true };

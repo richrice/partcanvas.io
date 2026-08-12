@@ -16,6 +16,9 @@ export interface HostedModelDraft {
   files?: Record<string, string>;
   parameters?: Record<string, ParameterValue>;
   tags?: string[];
+  // Geometry measurements from the publisher's own compile. They are derived
+  // data, not identity, so the content hash ignores them.
+  metrics?: ModelMetrics | null;
 }
 
 export interface HostedModel {
@@ -29,5 +32,6 @@ export interface HostedModel {
   parameters: Record<string, ParameterValue>;
   tags: string[];
   parameterSchema: ModelParameter[];
-  metrics: ModelMetrics;
+  // Null when the publisher reported no usable measurements.
+  metrics: ModelMetrics | null;
 }

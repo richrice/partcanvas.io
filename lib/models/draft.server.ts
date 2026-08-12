@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { ModelMetrics } from "../scad/compiler";
 import type { ParameterValue } from "../scad/parameters";
 import type { HostedModelDraft } from "./types";
 
@@ -24,7 +25,40 @@ function validateParameters(value: unknown): Record<string, ParameterValue> {
   return output;
 }
 
-export function validateDraft(input: HostedModelDraft): Required<HostedModelDraft> {
+function finite(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function triple(value: unknown): [number, number, number] | null {
+  if (!Array.isArray(value) || value.length !== 3) return null;
+  const numbers = value.map(finite);
+  return numbers.every((component) => component !== null) ? numbers as [number, number, number] : null;
+}
+
+// Geometry metrics are measured by whoever publishes: the browser already
+// compiled the exact draft it is sending. Only the shape is checked here, and
+// a payload without usable bounds records null rather than invented numbers.
+export function validateMetrics(value: unknown): ModelMetrics | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const input = value as Partial<ModelMetrics>;
+  const min = triple(input.bounds?.min);
+  const max = triple(input.bounds?.max);
+  const triangles = finite(input.triangles);
+  if (!min || !max || triangles === null) return null;
+  return {
+    bounds: { min, max },
+    dimensions: triple(input.dimensions),
+    volume: finite(input.volume),
+    area: finite(input.area),
+    triangles: Math.max(0, Math.round(triangles)),
+    compileMs: Math.max(0, finite(input.compileMs) ?? 0),
+  };
+}
+
+// The hashed identity of a revision: every field except the derived metrics.
+export type DraftIdentity = Required<Omit<HostedModelDraft, "metrics">>;
+
+export function validateDraft(input: HostedModelDraft): DraftIdentity {
   const name = typeof input.name === "string" ? input.name.trim().slice(0, 80) : "";
   if (!name) throw new Error("Model name is required");
   if (typeof input.source !== "string" || !input.source.trim()) throw new Error("Model source is required");
@@ -46,8 +80,8 @@ export function validateDraft(input: HostedModelDraft): Required<HostedModelDraf
   return { name, description, source: input.source, files, parameters: validateParameters(input.parameters), tags };
 }
 
-// The content hash covers the validated draft only (not createdAt or compiled
-// outputs), so identical publishes at different times converge on one record.
-export function hashDraft(draft: Required<HostedModelDraft>): string {
+// The content hash covers the validated draft only (not createdAt or measured
+// metrics), so identical publishes at different times converge on one record.
+export function hashDraft(draft: DraftIdentity): string {
   return createHash("sha256").update(JSON.stringify(stableValue(draft))).digest("hex").slice(0, 24);
 }

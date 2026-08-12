@@ -67,6 +67,17 @@ import {
 
 const format = (value: number) => value >= 100 ? value.toFixed(0) : value >= 10 ? value.toFixed(1) : value.toFixed(2);
 
+// A proxy timeout or a crashed instance answers with an HTML error page. Read
+// the status rather than let JSON.parse report "Unexpected token '<'".
+async function readJsonResponse<T>(response: Response): Promise<T> {
+  const text = await response.text();
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(`The server returned ${response.status}${response.statusText ? ` ${response.statusText}` : ""} instead of a response`);
+  }
+}
+
 const MODEL_EXPORT_FORMATS: { value: ExportFormat; label: string }[] = [
   { value: "stl", label: "Binary STL" },
   { value: "step", label: "STEP (faceted B-rep)" },
@@ -440,6 +451,8 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
         source,
         files: projectFiles,
         parameters,
+        // The server stores these instead of recompiling the model itself.
+        metrics: result?.metrics,
         thumbnail: thumbnailCaptureRef.current?.() ?? undefined,
       };
       if (social?.viewerIsOwner && publishMode === "update") {
@@ -448,7 +461,7 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
           headers: { "content-type": "application/json" },
           body: JSON.stringify(draft),
         });
-        const payload = await response.json() as { version?: number; error?: string };
+        const payload = await readJsonResponse<{ version?: number; error?: string }>(response);
         if (!response.ok || !payload.version) throw new Error(payload.error || "Could not publish the update");
         setShowPublishDialog(false);
         showNotice(`Version ${payload.version} published`, "success", 2600);
@@ -466,7 +479,7 @@ export function Workspace({ initialModel, social, revisionOf }: { initialModel?:
           tags: publishTags.split(",").map((tag) => tag.trim()).filter(Boolean),
         }),
       });
-      const payload = await response.json() as { url?: string; error?: string };
+      const payload = await readJsonResponse<{ url?: string; error?: string }>(response);
       if (!response.ok || !payload.url) throw new Error(payload.error || "Could not publish model");
       setShowPublishDialog(false);
       router.push(payload.url);

@@ -112,13 +112,12 @@ describe("POST /api/app/models", () => {
     expect(served.status).toBe(404);
   });
 
-  it("rejects drafts that fail validation or produce no solid", async () => {
+  it("rejects drafts that fail validation or do not parse", async () => {
     setSessionUserForTests(author);
     const invalid = await POST(publishRequest({ name: "", source: "cube(4);" }));
     expect(invalid.status).toBe(422);
-    const flat = await POST(publishRequest({ name: "Flat", source: "size = 4;" }));
-    expect(flat.status).toBe(422);
-    expect((await flat.json()).error).toMatch(/3D solid/);
+    const broken = await POST(publishRequest({ name: "Broken", source: "cube(4" }));
+    expect(broken.status).toBe(422);
     const rows = await testDb.db.select({ id: models.id }).from(models);
     expect(rows).toHaveLength(3);
   });

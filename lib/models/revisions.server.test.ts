@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { revisions } from "../db/schema";
 import { createTestDatabase } from "../db/test-db.server";
+import type { ModelMetrics } from "../scad/compiler";
 import {
   readRevision,
   readRevisionThumbnail,
@@ -37,7 +38,8 @@ describe("revision store", () => {
       parameters: { WIDTH: 24 },
       parameterSchema: [{ name: "WIDTH", type: "number" }],
     });
-    expect(first.record.metrics.triangles).toBeGreaterThan(0);
+    // Publishing does not compile, so an unmeasured draft stores null metrics.
+    expect(first.record.metrics).toBeNull();
 
     const read = await readRevision(first.record.id, testDb.db);
     expect(read).toEqual(first.record);
@@ -71,8 +73,43 @@ describe("revision store", () => {
     ).rejects.toThrow(/must contain text/);
   });
 
-  it("rejects sources that produce no 3D solid", async () => {
-    await expect(saveRevision({ name: "Empty", source: "width = 20;" }, testDb.db)).rejects.toThrow(/3D solid/);
+  it("rejects a project whose include is missing", async () => {
+    await expect(
+      saveRevision({ name: "Dangling", source: "include <missing.scad>\ncube(5);" }, testDb.db),
+    ).rejects.toThrow(/was not provided/);
+  });
+
+  it("keeps publisher metrics out of the content hash", async () => {
+    const measured: ModelMetrics = {
+      bounds: { min: [0, 0, 0], max: [4, 4, 4] },
+      dimensions: [4, 4, 4],
+      volume: 64,
+      area: 96,
+      triangles: 12,
+      compileMs: 3.5,
+    };
+    const source = { name: "Measured", source: "cube([4, 4, 4]);", metrics: measured };
+    const first = await saveRevision(source, testDb.db);
+    expect(first.created).toBe(true);
+    expect(first.record.metrics).toEqual(measured);
+
+    // Same draft, different measurements: one record, first metrics kept.
+    const second = await saveRevision({ ...source, metrics: { ...measured, triangles: 99 } }, testDb.db);
+    expect(second.created).toBe(false);
+    expect(second.record.id).toBe(first.record.id);
+    expect(second.record.metrics?.triangles).toBe(12);
+  });
+
+  it("records null metrics when the publisher sends none or sends junk", async () => {
+    const none = await saveRevision({ name: "No metrics", source: "cube([11, 11, 11]);" }, testDb.db);
+    expect(none.record.metrics).toBeNull();
+
+    const junk = await saveRevision({
+      name: "Junk metrics",
+      source: "cube([12, 12, 12]);",
+      metrics: { bounds: { min: [0, 0], max: "big" }, triangles: "many" } as never,
+    }, testDb.db);
+    expect(junk.record.metrics).toBeNull();
   });
 
   it("returns null for malformed and unknown ids", async () => {
