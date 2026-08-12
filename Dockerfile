@@ -29,6 +29,10 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 # SQL migrations are read from disk at boot (instrumentation.ts), so the
 # standalone output tracing does not pick them up.
 COPY --from=builder --chown=nextjs:nodejs /app/drizzle ./drizzle
+# /api/render spawns this bundle with worker_threads, which needs a real file
+# on disk. Next's server bundler does not emit one, so `npm run build` writes
+# it and lib/render-pool.server.ts resolves it from the working directory.
+COPY --from=builder --chown=nextjs:nodejs /app/worker-build ./worker-build
 
 USER nextjs
 EXPOSE 3000

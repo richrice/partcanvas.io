@@ -1,10 +1,12 @@
-import { compileScad, serializeGeometry, type ExportFormat } from "@/lib/scad/compiler";
+import { type ExportFormat } from "@/lib/scad/compiler";
 import { defaultParameterValues, extractParameters, type ParameterInput } from "@/lib/scad/parameters";
 import { loadOpenScadParameterFile, resolveOpenScadParameterSet } from "@/lib/scad/parameter-sets";
 import { resolveSourceFiles } from "@/lib/scad/files";
 import { CORS_HEADERS, corsPreflight } from "@/lib/api/cors";
 import { PARTCANVAS_API_VERSION, PARTCANVAS_ENGINE } from "@/lib/api/meta";
 import { checkRateLimit, clientIp, COMPILE_RULE, rateLimitResponse } from "@/lib/api/rate-limit.server";
+import { RenderBudgetError, RenderBusyError, RENDER_BUDGET_MS, runRender } from "@/lib/render-pool.server";
+import type { RenderWorkerResponse } from "@/lib/render-worker.server";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -150,86 +152,103 @@ export async function POST(request: Request) {
       )
       : undefined;
     const overrides = { ...preset?.values, ...safeParameters(body.defines), ...safeParameters(body.parameters) };
-    const result = compileScad(body.source, {
-      parameters: overrides,
-      fn,
-      time,
-      preview: typeof body.options?.preview === "boolean" ? body.options.preview : false,
-      checkParameters: body.options?.checkParameters === true || body.options?.checkParameterRanges === true,
-      checkParameterRanges: body.options?.checkParameterRanges === true,
-      outputDimension: format === "svg" || format === "dxf" ? "2d" : "3d",
-      files,
-      transform: {
-        scale: vectorScale ?? scalarScale,
-        rotate: safeVector(body.options?.rotate),
-        translate: safeVector(body.options?.translate),
-        origin,
-      },
-    });
-    const warnings = [...(preset?.diagnostics.map((diagnostic) => diagnostic.message) ?? []), ...result.warnings];
-    if (!result.geometry) {
-      const expected = format === "svg" || format === "dxf" ? "2D geometry" : "a 3D solid";
-      return json({ error: `The script did not produce ${expected}`, warnings }, 422);
-    }
-    if (body.options?.hardWarnings === true && warnings.length) {
-      return json({ error: "Render stopped because hardWarnings is enabled", warnings }, 422);
-    }
     const requestedLimit = typeof body.options?.maxTriangles === "number" && Number.isFinite(body.options.maxTriangles)
       ? Math.round(body.options.maxTriangles)
       : 2_000_000;
     const maxTriangles = Math.min(5_000_000, Math.max(1_000, requestedLimit));
-    if (result.dimension === 3 && result.metrics.triangles > maxTriangles) {
-      return json({ error: `Model has ${result.metrics.triangles} triangles, exceeding the ${maxTriangles} triangle limit` }, 422);
-    }
     const filename = typeof body.filename === "string" && body.filename.trim()
       ? body.filename.replace(/[^a-zA-Z0-9._-]/g, "-").replace(/\.(?:stl|obj|3mf|step|stp|svg|dxf)$/i, "")
       : "partcanvas-model";
-    const serializeStart = performance.now();
-    const serialized = serializeGeometry(result.parts.length ? result.parts : result.geometry, format as ExportFormat, filename);
-    const serializeMs = performance.now() - serializeStart;
+    // The compile runs in a worker thread. It is unbounded CPU work, so on the
+    // request thread it would block every other request on this instance.
+    let rendered: RenderWorkerResponse;
+    try {
+      rendered = await runRender({
+        source: body.source,
+        options: {
+          parameters: overrides,
+          fn,
+          time,
+          preview: typeof body.options?.preview === "boolean" ? body.options.preview : false,
+          checkParameters: body.options?.checkParameters === true || body.options?.checkParameterRanges === true,
+          checkParameterRanges: body.options?.checkParameterRanges === true,
+          outputDimension: format === "svg" || format === "dxf" ? "2d" : "3d",
+          files,
+          transform: {
+            scale: vectorScale ?? scalarScale,
+            rotate: safeVector(body.options?.rotate),
+            translate: safeVector(body.options?.translate),
+            origin,
+          },
+        },
+        format: format as ExportFormat,
+        filename,
+        maxTriangles,
+        hardWarnings: body.options?.hardWarnings === true,
+        presetWarnings: preset?.diagnostics.map((diagnostic) => diagnostic.message) ?? [],
+      });
+    } catch (error) {
+      if (error instanceof RenderBusyError) {
+        return Response.json({ error: error.message }, {
+          status: 429,
+          headers: { "retry-after": "5", "cache-control": "no-store", ...CORS_HEADERS },
+        });
+      }
+      if (error instanceof RenderBudgetError) {
+        return Response.json({ error: error.message }, {
+          status: 503,
+          headers: { "retry-after": String(Math.ceil(RENDER_BUDGET_MS / 1000)), "cache-control": "no-store", ...CORS_HEADERS },
+        });
+      }
+      return json({ error: error instanceof Error ? error.message : "The render worker failed" }, 500);
+    }
+    if (!rendered.ok) {
+      return json(rendered.warnings ? { error: rendered.error, warnings: rendered.warnings } : { error: rendered.error }, 422);
+    }
+    const { warnings, serializeMs } = rendered;
     if (requestedSummary) {
-      const dimension = result.dimension as 2 | 3;
+      const dimension = rendered.dimension;
       const categories = [...requestedSummary];
       const includeGeometry = requestedSummary.has("geometry") || requestedSummary.has("bounding-box") || requestedSummary.has("area");
-      const bounds = result.metrics.bounds;
+      const bounds = rendered.metrics.bounds;
       const summary = {
         engine: PARTCANVAS_ENGINE,
         apiVersion: PARTCANVAS_API_VERSION,
         categories,
         output: {
-          format: serialized.extension,
-          filename: `${filename}.${serialized.extension}`,
-          mimeType: serialized.mimeType,
-          bytes: serialized.data.byteLength,
+          format: rendered.extension,
+          filename: `${filename}.${rendered.extension}`,
+          mimeType: rendered.mimeType,
+          bytes: rendered.data.byteLength,
         },
         parameters: {
           parameterSet: preset?.name ?? null,
-          values: { ...defaultParameterValues(result.parameters), ...overrides },
+          values: { ...defaultParameterValues(rendered.parameters), ...overrides },
         },
-        diagnostics: { warnings, messages: result.messages },
+        diagnostics: { warnings, messages: rendered.messages },
         ...(includeGeometry ? {
           geometry: {
             dimensions: dimension,
-            facets: result.metrics.triangles,
-            triangles: result.metrics.triangles,
+            facets: rendered.metrics.triangles,
+            triangles: rendered.metrics.triangles,
             ...(requestedSummary.has("bounding-box") && bounds ? {
               bounding_box: {
                 min: bounds.min.slice(0, dimension),
                 max: bounds.max.slice(0, dimension),
-                size: result.metrics.dimensions?.slice(0, dimension) ?? null,
+                size: rendered.metrics.dimensions?.slice(0, dimension) ?? null,
               },
             } : {}),
           },
         } : {}),
         ...(requestedSummary.has("area") ? {
           measurements: {
-            area_mm2: result.metrics.area,
-            volume_mm3: result.metrics.volume,
+            area_mm2: rendered.metrics.area,
+            volume_mm3: rendered.metrics.volume,
           },
         } : {}),
         ...(requestedSummary.has("time") ? {
           time: {
-            compile_ms: result.metrics.compileMs,
+            compile_ms: rendered.metrics.compileMs,
             serialize_ms: serializeMs,
             total_ms: performance.now() - requestStart,
           },
@@ -243,15 +262,15 @@ export async function POST(request: Request) {
       };
       return json(summary);
     }
-    return new Response(Buffer.from(serialized.data), {
+    return new Response(Buffer.from(rendered.data), {
       headers: {
-        "content-type": serialized.mimeType,
-        "content-disposition": `attachment; filename="${filename}.${serialized.extension}"`,
-        "x-partcanvas-triangles": String(result.metrics.triangles),
-        "x-partcanvas-compile-ms": result.metrics.compileMs.toFixed(1),
-        "x-partcanvas-volume-mm3": result.metrics.volume?.toFixed(3) ?? "0",
-        "x-partcanvas-area-mm2": result.metrics.area?.toFixed(3) ?? "0",
-        "x-partcanvas-dimension": String(result.dimension),
+        "content-type": rendered.mimeType,
+        "content-disposition": `attachment; filename="${filename}.${rendered.extension}"`,
+        "x-partcanvas-triangles": String(rendered.metrics.triangles),
+        "x-partcanvas-compile-ms": rendered.metrics.compileMs.toFixed(1),
+        "x-partcanvas-volume-mm3": rendered.metrics.volume?.toFixed(3) ?? "0",
+        "x-partcanvas-area-mm2": rendered.metrics.area?.toFixed(3) ?? "0",
+        "x-partcanvas-dimension": String(rendered.dimension),
         "x-partcanvas-warning-count": String(warnings.length),
         ...(warnings.length ? { "x-partcanvas-warnings": encodeURIComponent(warnings.slice(0, 10).join(" | ")).slice(0, 4_000) } : {}),
         ...(preset ? { "x-partcanvas-parameter-set": encodeURIComponent(preset.name).slice(0, 1_000) } : {}),

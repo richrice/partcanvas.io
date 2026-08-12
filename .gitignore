@@ -9,3 +9,4 @@ result.json
 .env*
 .data
 !.env.example
+worker-build

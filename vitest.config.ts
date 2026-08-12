@@ -3,5 +3,9 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   resolve: { alias: { "@": path.resolve(__dirname, ".") } },
-  test: { environment: "node", coverage: { reporter: ["text", "html"] } },
+  test: {
+    environment: "node",
+    globalSetup: ["./vitest.global-setup.ts"],
+    coverage: { reporter: ["text", "html"] },
+  },
 });
