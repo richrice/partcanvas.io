@@ -30,16 +30,28 @@ function colorHex(geometry: Geom3) {
 }
 
 function meshXml(geometry: Geom3) {
+  // The 3MF spec judges manifoldness on vertex indices, so triangles must
+  // share vertices. Coordinates match exactly after makeWatertight, which
+  // makes the exact-string lookup a reliable weld.
   const vertices: string[] = [];
+  const indexByVertex = new Map<string, number>();
   const triangles: string[] = [];
-  let offset = 0;
+  const indexOf = (vertex: number[]) => {
+    const key = `${vertex[0]},${vertex[1]},${vertex[2]}`;
+    let index = indexByVertex.get(key);
+    if (index === undefined) {
+      index = vertices.length;
+      vertices.push(`<vertex x="${vertex[0]}" y="${vertex[1]}" z="${vertex[2]}"/>`);
+      indexByVertex.set(key, index);
+    }
+    return index;
+  };
   for (const polygon of geometries.geom3.toPolygons(geometry)) {
     if (polygon.vertices.length < 3) continue;
-    for (const [x, y, z] of polygon.vertices) vertices.push(`<vertex x="${x}" y="${y}" z="${z}"/>`);
-    for (let index = 1; index < polygon.vertices.length - 1; index += 1) {
-      triangles.push(`<triangle v1="${offset}" v2="${offset + index}" v3="${offset + index + 1}"/>`);
+    const ids = polygon.vertices.map(indexOf);
+    for (let index = 1; index < ids.length - 1; index += 1) {
+      triangles.push(`<triangle v1="${ids[0]}" v2="${ids[index]}" v3="${ids[index + 1]}"/>`);
     }
-    offset += polygon.vertices.length;
   }
   return `<mesh><vertices>${vertices.join("")}</vertices><triangles>${triangles.join("")}</triangles></mesh>`;
 }

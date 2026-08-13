@@ -9,6 +9,7 @@ import { parse } from "./parser";
 import { resolveSourceFiles } from "./files";
 import { serializeBambu3mf, type PlateSpec } from "./bambu-3mf";
 import { serializeStep } from "./step";
+import { makeWatertight } from "./watertight";
 
 export interface ModelMetrics {
   bounds: { min: [number, number, number]; max: [number, number, number] } | null;
@@ -154,9 +155,11 @@ export function compileScad(source: string, options: CompileOptions = {}): Compi
 export function geometryToBinaryStl(geometry: CadGeometry | CadGeometry[], name = "partcanvas-model"): Uint8Array {
   // Multiple parts are written as separate watertight shells in one mesh
   // (like OpenSCAD's lazy union) instead of being boolean-unioned: JSCAD's
-  // union leaves micro T-junctions on coplanar interfaces, while intact
-  // shells stay individually manifold and slice cleanly.
-  const solids = (Array.isArray(geometry) ? geometry : [geometry]).filter(isGeom3);
+  // union leaves T-junction micro-cracks on coplanar interfaces, while intact
+  // shells stay individually manifold and slice cleanly. Each shell is also
+  // repaired first, because JSCAD booleans inside a single part leave the
+  // same cracks (see watertight.ts).
+  const solids = (Array.isArray(geometry) ? geometry : [geometry]).filter(isGeom3).map(makeWatertight);
   if (!solids.length) throw new Error("STL export requires 3D geometry");
   const chunks = serializeStl({ binary: true, name }, ...solids);
   return chunksToBytes(chunks);
@@ -188,16 +191,18 @@ export function serializeGeometry(input: CadGeometry | CadGeometry[], format: Ex
   const solids = items.filter(isGeom3);
   if (!solids.length) throw new Error(`${format.toUpperCase()} export requires 3D geometry`);
   // Multi-part models export as separate watertight shells (see geometryToBinaryStl).
+  // Each mesh format repairs its shells with makeWatertight; STEP repairs
+  // inside serializeStep because the union there cracks the mesh again.
   if (format === "stl") return { data: geometryToBinaryStl(solids, name), extension: "stl", mimeType: "model/stl" };
   if (format === "obj") {
-    return { data: chunksToBytes(serializeObj({ triangulate: true }, ...solids)), extension: "obj", mimeType: "text/plain; charset=utf-8" };
+    return { data: chunksToBytes(serializeObj({ triangulate: true }, ...solids.map(makeWatertight))), extension: "obj", mimeType: "text/plain; charset=utf-8" };
   }
   if (format === "step") {
     const geometry = solids.length === 1 ? solids[0] : booleans.union(solids);
     return { data: serializeStep(geometry, name), extension: "step", mimeType: "model/step" };
   }
   return {
-    data: serializeBambu3mf(solids, name, options?.plate),
+    data: serializeBambu3mf(solids.map(makeWatertight), name, options?.plate),
     extension: "3mf",
     mimeType: "model/3mf",
   };

@@ -563,9 +563,11 @@ describe("CAD compiler", () => {
     expect(stepText).toMatch(/^ISO-10303-21;/);
     expect(stepText).toContain("FILE_SCHEMA(('AUTOMOTIVE_DESIGN_CC2'))");
     expect(stepText).toContain("FACETED_BREP('Test cube'");
+    // A conforming cube skips the watertight rebuild, so it keeps its six
+    // planar quad faces instead of splitting into twelve triangles.
     expect(stepText.match(/CARTESIAN_POINT/g)).toHaveLength(8);
-    expect(stepText.match(/FACE_SURFACE\('/g)).toHaveLength(12);
-    expect(stepText.match(/PLANE\('/g)).toHaveLength(12);
+    expect(stepText.match(/FACE_SURFACE\('/g)).toHaveLength(6);
+    expect(stepText.match(/PLANE\('/g)).toHaveLength(6);
     expect(stepText).toContain("END-ISO-10303-21;");
     expect([...threeMf.data.slice(0, 2)]).toEqual([0x50, 0x4b]);
     expect(threeMf.data.byteLength).toBeGreaterThan(1000);

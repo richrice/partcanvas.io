@@ -1,5 +1,6 @@
-import { geometries, modifiers } from "@jscad/modeling";
+import { geometries } from "@jscad/modeling";
 import type { Geom3 } from "@jscad/modeling/src/geometries/types";
+import { makeWatertight } from "./watertight";
 
 function stepString(value: string) {
   return value.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/'/g, "''");
@@ -34,11 +35,11 @@ function faceNormal(vertices: Point3[]): Point3 | null {
 
 /** Serialize JSCAD's polygonal solid as an ISO 10303-21 faceted B-rep in millimeters. */
 export function serializeStep(geometry: Geom3, name: string): Uint8Array {
-  // STEP shells require matching face boundaries, so resolve polygon T-junctions
-  // before emitting topology and triangulate the resulting conforming mesh.
-  // JSCAD's declaration exposes this CommonJS function as a module namespace.
-  const generalize = modifiers.generalize as unknown as (options: { snap: boolean; triangulate: boolean }, input: Geom3) => Geom3;
-  const faceted = generalize({ snap: true, triangulate: true }, geometry);
+  // STEP shells require matching face boundaries, so repair the mesh before
+  // emitting topology. JSCAD's own generalize({snap, triangulate}) cannot do
+  // this: snap moves T-junction vertices further off their edges than the
+  // 1e-5 distance that insertTjunctions accepts (see watertight.ts).
+  const faceted = makeWatertight(geometry);
   const polygons = geometries.geom3.toPolygons(faceted);
   if (!polygons.length) throw new Error("STEP export requires at least one face");
 
