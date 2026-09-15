@@ -288,6 +288,12 @@ function unionAll(items: CadGeometry[]): CadGeometry[] {
   return [...unionByColor(items.filter(isGeom2)), ...unionByColor(items.filter(isGeom3))];
 }
 
+// Builtin modules that operate on their evaluated children.
+const CHILD_BUILTINS = new Set([
+  "translate", "scale", "rotate", "mirror", "color", "multmatrix", "resize",
+  "offset", "projection", "linear_extrude", "rotate_extrude", "roof", "render",
+]);
+
 export function evaluate(
   program: Program,
   overrides: Record<string, ParameterInput> = {},
@@ -724,6 +730,9 @@ export function evaluate(
       }
       return [preserveColor(solidGroups[0][0], operands.length === 1 ? operands[0] : booleans.intersect(operands))];
     }
+    // A user module call also gets to this line. Return before its children
+    // evaluate, because the module evaluates them again through children().
+    if (!CHILD_BUILTINS.has(name)) return undefined;
     const children = evalStatements(statement.children, env);
     if (name === "translate") {
       const offset = vector(get("v", 0, [0, 0, 0]), 3) as [number, number, number];
@@ -800,10 +809,14 @@ export function evaluate(
       const height = num(get("height", 0, 1), 1);
       const twist = deg(num(get("twist", 3, 0)));
       const slices = Math.max(1, Math.round(num(get("slices", 4, segments), segments)));
-      return children.filter(isGeom2).map((child) => {
-        const solid = extrusions.extrudeLinear({ height, twistAngle: twist, twistSteps: slices }, child as ReturnType<typeof primitives.square>);
-        return bool(get("center", 1, false)) ? transforms.translateZ(-height / 2, solid) : solid;
-      });
+      const shapes = children.filter(isGeom2);
+      if (!shapes.length) return [];
+      // OpenSCAD extrudes the union of all 2D children as one shape. If each
+      // child extrudes separately, a later boolean must merge the solids in
+      // 3D, and that costs far more than the 2D union.
+      const shape = unionPreservingShells(shapes) as Geom2;
+      const solid = extrusions.extrudeLinear({ height, twistAngle: twist, twistSteps: slices }, shape);
+      return [bool(get("center", 1, false)) ? transforms.translateZ(-height / 2, solid) : solid];
     }
     if (name === "rotate_extrude") {
       const angle = deg(num(get("angle", 0, 360), 360));

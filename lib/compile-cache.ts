@@ -15,7 +15,9 @@ import type { CompileWorkerRequest, CompileWorkerResponse } from "@/lib/compile-
 // v2: real Liberation Sans text() outlines, color-preserving union(),
 // OpenSCAD child-node boolean semantics.
 // v3: OpenSCAD-compatible str() real-number formatting.
-const CACHE_VERSION = 3;
+// v4: linear_extrude() extrudes the union of its children as one solid, and
+// module calls evaluate children once.
+const CACHE_VERSION = 4;
 const MEMORY_CAPACITY = 16;
 // Persist all but trivial compiles: users expect a refreshed model page to
 // load from cache, and even an ~80ms compile is a visible flash on top of

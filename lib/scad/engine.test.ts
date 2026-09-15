@@ -189,6 +189,36 @@ describe("CAD compiler", () => {
     expect(result.warnings).toEqual([]);
   });
 
+  it("extrudes the union of all 2D children as one solid like OpenSCAD", () => {
+    // Overlapping children merge into one outline before the extrusion. The
+    // JSCAD 2D union has a tolerance of about 1e-5, so the check uses 2 digits.
+    const overlapping = compileScad(`
+      linear_extrude(height = 2) {
+        square(4);
+        translate([2, 2]) square(4);
+      }
+    `);
+    expect(overlapping.parts).toHaveLength(1);
+    expect(overlapping.metrics.volume).toBeCloseTo(56, 2);
+    // Disjoint children from a for loop also give one solid, with no 3D union.
+    const disjoint = compileScad(`
+      linear_extrude(height = 2)
+        for (i = [0:5]) rotate(i * 60) translate([10, 0]) circle(1, $fn = 4);
+    `);
+    expect(disjoint.parts).toHaveLength(1);
+    expect(disjoint.metrics.volume).toBeCloseTo(24, 4);
+  });
+
+  it("evaluates the children of a user module call only through children()", () => {
+    // Each nested call used to evaluate its children one more time, so the
+    // cost doubled with each level. OpenSCAD 2026.02 echoes one time.
+    const result = compileScad(`
+      module up(z) translate([0, 0, z]) children();
+      up(1) up(2) up(3) echo("child");
+    `);
+    expect(result.messages).toEqual(["child"]);
+  });
+
   it("treats each boolean child node as one operand like OpenSCAD", () => {
     // A for loop is a single child: every cube it yields is on the positive
     // side of the difference. Reference volume from OpenSCAD 2026.02.
